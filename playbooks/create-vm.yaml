@@ -1,0 +1,85 @@
+- name: Create vm
+  hosts: localhost
+  vars:
+    memory_mb: 6144
+    vcpus: 4
+
+  tasks:
+  - name: set facts
+    ansible.builtin.set_fact:
+      vm_name: "{{ vm_name }}"
+    
+  - name: Download qcow2 image
+    become: true
+    ansible.builtin.get_url:
+      url: https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
+      dest: /var/lib/libvirt/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
+
+  - name: Copy qcow2 image to /var/lib/libvirt/images
+    become: true
+    ansible.builtin.copy:
+      src: /var/lib/libvirt/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
+      dest: /var/lib/libvirt/images/{{ vm_name }}.qcow2
+
+  - name: Create temporary directory to create cloud init iso
+    ansible.builtin.file:
+      state: directory
+      path: /tmp/cloud-init/{{ vm_name }}    
+
+  - name: create user-data file
+    ansible.builtin.template:
+      src: files/templates/user-data.j2
+      dest: /tmp/cloud-init/{{ vm_name }}/user-data
+      force: true
+
+  - name: create meta-data file
+    ansible.builtin.template:
+      src: files/templates/meta-data.j2
+      dest: /tmp/cloud-init/{{ vm_name }}/meta-data
+      force: true
+
+  - name: create network config file
+    ansible.builtin.template:
+      src: files/templates/network-config.j2
+      dest: /tmp/cloud-init/{{ vm_name }}/network-config
+      force: true
+
+  - name: create cloud init iso
+    become: true
+    ansible.builtin.shell: |
+      cloud-localds /var/lib/libvirt/images/seed-{{ vm_name }}.iso \
+        /tmp/cloud-init/{{ vm_name }}/user-data \
+        /tmp/cloud-init/{{ vm_name }}/meta-data \
+        --network-config=/tmp/cloud-init/{{ vm_name }}/network-config
+  
+  - name: create vm
+    become: true
+    ansible.builtin.shell: |
+      virt-install \
+        --name {{ vm_name }} \
+        --memory {{ memory_mb }} \
+        --vcpus {{ vcpus }} \
+        --disk path=/var/lib/libvirt/images/{{ vm_name }}.qcow2 \
+        --disk path=/var/lib/libvirt/images/seed-{{ vm_name }}.iso,device=cdrom \
+        --network network=default,model=virtio \
+        --os-variant centos-stream10 \
+        --import \
+        --noautoconsole \
+
+  - name: Wait for VM to boot
+    ansible.builtin.pause:
+      seconds: 30
+
+  - name: Get VM IPv4 address
+    ansible.builtin.shell: |
+      virsh domifaddr {{ vm_name }} \
+        | awk '/ipv4/ {print $4}' \
+        | cut -d/ -f1
+    register: vm_ip
+    retries: 12
+    delay: 5
+    until: vm_ip.stdout != ""
+
+  - name: Show VM IP
+    ansible.builtin.debug:
+      msg: "VM {{ vm_name }} IP: {{ vm_ip.stdout }}"
