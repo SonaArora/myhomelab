@@ -16,8 +16,9 @@
       url: "{{ centos_images_url }}/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2.SHA256SUM"
       return_content: true
       method: GET
-      timeout: 20
+      timeout: 1
     register: centos_sha256sum
+
 
   - name: Extract CentOS image checksum
     ansible.builtin.set_fact:
