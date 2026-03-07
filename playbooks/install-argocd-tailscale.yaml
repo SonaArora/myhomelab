@@ -1,0 +1,50 @@
+
+# Install tailscale operator and argo-cd using helm
+
+- name: Install tailscale operator using helm
+  hosts: localhost
+  vars_files:
+  - vars/tailscale-secrets.yaml
+
+  tasks:
+
+  - name: Add argo-cd repo
+    kubernetes.core.helm_repository:
+      name: argo-cd
+      repo_url: https://argoproj.github.io/argo-helm
+
+  - name: Add tailscale repo
+    kubernetes.core.helm_repository:
+      name: tailscale
+      repo_url: https://pkgs.tailscale.com/helmcharts
+
+  - name: Install tailscale operator for ingress, cert management and ip-management
+    kubernetes.core.helm:
+      name: tailscale-operator
+      chart_ref: tailscale/tailscale-operator
+      release_namespace: tailscale
+      create_namespace: true
+      set_values:
+      - value: "oauth.clientId={{ tailscale_oauth_client_id }}"
+        value_type: string
+      - value: "oauth.clientSecret={{ tailscale_oauth_client_secret }}"
+        value_type: string
+
+
+# Install argo-cd and enable ingress and use tailscale ingressclass
+
+  - name: Install argo-cd 
+    kubernetes.core.helm:
+      name: argo-cd
+      chart_ref: argo-cd/argo-cd
+      release_namespace: argo-cd
+      create_namespace: true
+      chart_version: 9.3.6
+      force: true
+      values:
+        server:
+          ingress:
+            enabled: true
+            ingressClassName: "tailscale"
+            hostname: "argocd"
+            tls: true
