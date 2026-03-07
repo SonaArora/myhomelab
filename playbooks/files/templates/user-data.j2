@@ -1,0 +1,16 @@
+#cloud-config
+
+hostname: {{ vm_name }}
+fqdn: {{ vm_name }}.local
+users:
+  - name: cloud-user
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    groups: users, wheel
+    shell: /bin/bash
+    ssh-authorized-keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCxvw+bt0syjG2JrownWrn7rJueihoCOUyJnWV1o+a5chpHezVTFvLEGBAuog3oetbxjrYjR5uxauvhK4wlh2oCG1Pw+IpjCUT3XFOcWPkwIfDRWxHF7KgDtirgLdTUKW99R0iaDJVdcTODJ4XjXRy8v1/pMFfC6HPevlO0aBDKJevlaN47G8Yi2m/Hf52qmbSDoPlRmhapsx9WCph9UlrU4tzK+XCy/Uv7xHwAkdZOKY89kzXXpGCXwdbmal0LUcdES2DyFIuHGTFk0AEt6bm5UdXqTdgHrY31PEc69JCrOXgOKkdzCCrlKoa3yynIGyLDOWu7bxlGvGNQCrRtwYjTgUHL5JjL3cQVtcjAx4sVD8ewrRegEJsyaQsMRDWP6DB9vowQAf3nVmAXI/vsT7h0JDP97EsRO6XHAHsfm/qNN8R3S2cF8Svsu1JKdIUA3FtUZFUlTZFFjEZhkdpo1t9q53uMT0Txcz5vV2kuQ3sGjo2Juxrl0Sy0E/bl/n2HOPM= sonal@fedora
+
+runcmd:
+  - systemctl enable sshd --now
+  - dnf update -y
+  - curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --auth-key=tskey-auth-kQgFFN2A3K11CNTRL-cg5EWzmRuT3v5VgrkxpiT3aj2qCbXMkYh
