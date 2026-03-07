@@ -3,23 +3,41 @@
   vars:
     memory_mb: 6144
     vcpus: 4
+    centos_images_url: https://cloud.centos.org/centos/10-stream/x86_64/images
+    centos_qcow2_image: CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
 
   tasks:
   - name: set facts
     ansible.builtin.set_fact:
       vm_name: "{{ vm_name }}"
+
+  - name: Get CentOS image checksums
+    ansible.builtin.uri:
+      url: "{{ centos_images_url }}/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2.SHA256SUM"
+      return_content: true
+    register: centos_sha256sum
+
+  - name: Extract CentOS image checksum
+    ansible.builtin.set_fact:
+      centos_qcow2_checksum: "{{ centos_sha256sum.content | regex_search('(?m)^SHA256 \\(' ~ centos_qcow2_image | regex_escape ~ '\\) = ([a-fA-F0-9]{64})$', '\\1') | first }}"
+
+  - name: Ensure a qcow2 checksum entry exists
+    ansible.builtin.assert:
+      that:
+        - centos_qcow2_checksum is match('^[a-fA-F0-9]{64}$')
+      fail_msg: "No valid SHA256 checksum found for {{ centos_qcow2_image }}."
     
   - name: Download qcow2 image
     become: true
     ansible.builtin.get_url:
-      url: https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
-      dest: /var/lib/libvirt/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
-      checksum: "sha256:https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2.SHA256SUM"
+      url: "{{ centos_images_url }}/{{ centos_qcow2_image }}"
+      dest: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
+      checksum: "sha256:{{ centos_qcow2_checksum }}"
 
   - name: Copy qcow2 image to /var/lib/libvirt/images
     become: true
     ansible.builtin.copy:
-      src: /var/lib/libvirt/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
+      src: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
       dest: /var/lib/libvirt/images/{{ vm_name }}.qcow2
 
   - name: Create temporary directory to create cloud init iso
