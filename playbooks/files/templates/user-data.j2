@@ -12,5 +12,5 @@ users:
 
 runcmd:
   - systemctl enable sshd --now
+  - curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --auth-key="{{ tailscale_auth_key }}"
   - dnf update -y
-  - curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --auth-key=tskey-auth-kQgFFN2A3K11CNTRL-cg5EWzmRuT3v5VgrkxpiT3aj2qCbXMkYh
