@@ -93,15 +93,18 @@
       seconds: 30
 
   - name: Get VM IPv4 address
+    become: true
     ansible.builtin.shell: |
       virsh domifaddr {{ vm_name }} \
         | awk '/ipv4/ {print $4}' \
         | cut -d/ -f1
     register: vm_ip
-    retries: 12
+    retries: 20
     delay: 5
     until: vm_ip.stdout != ""
+    ignore_errors: true
 
   - name: Show VM IP
     ansible.builtin.debug:
       msg: "VM {{ vm_name }} IP: {{ vm_ip.stdout }}"
+    when: vm_ip is defined
