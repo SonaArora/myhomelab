@@ -5,7 +5,7 @@ metadata:
   namespace: argo-cd
 spec:
   destination:
-    name: in-cluster
+    server: https://kubernetes.default.svc
     namespace: argo-cd
   project: default
   source:
