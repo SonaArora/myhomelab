@@ -8,11 +8,13 @@
 stages:
 - test
 - secret-detection
+- lint
 sast:
   stage: test
 include:
 - template: Security/SAST.gitlab-ci.yml
 - template: Security/Secret-Detection.gitlab-ci.yml
+- component: $CI_SERVER_FQDN/niclas-zone/ci/yamllint/main@1.2.0
 variables:
   SECRET_DETECTION_ENABLED: 'true'
 secret_detection:
