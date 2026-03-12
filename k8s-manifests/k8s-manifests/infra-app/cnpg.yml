@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg
+  namespace: argo-cd
+spec:
+  destination:
+    namespace: cnpg-system
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: cloudnative-pg
+    helm:
+      parameters:
+        - name: webhook.startupProbe.failureThreshold
+          value: "60"
+        - name: webhook.startupProbe.periodSeconds
+          value: "50"
+    repoURL: https://cloudnative-pg.io/charts/
+    targetRevision: 0.27.1
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

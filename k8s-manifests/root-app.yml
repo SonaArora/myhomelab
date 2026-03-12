@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argo-cd
+spec:
+  destination:
+    name: in-cluster
+    namespace: argo-cd
+  project: default
+  source:
+    path: k8s-manifests/infra-app/ 
+    repoURL: https://gitlab.com/Sonal.work/myhomelab.git
+    targetRevision: HEAD
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

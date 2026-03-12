@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argo-cd
+spec:
+  destination:
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: cilium
+    helm:
+      parameters:
+      - name: enableIPv4Masquerade
+        value: "true"
+      - name: enableMasqueradeRouteSource
+        value: "true"
+      values: |
+        extraConfig:
+          egress-masquerade-interfaces: "tailscale0"
+    repoURL: https://helm.cilium.io/
+    targetRevision: 1.19.1
+  syncPolicy:
+    automated:
+      enabled: true
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
