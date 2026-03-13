@@ -13,6 +13,8 @@ spec:
     repoURL: https://gitlab.com/Sonal.work/myhomelab.git
     targetRevision: HEAD
   syncPolicy:
+    automated:
+      enabled: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
