@@ -1,21 +1,27 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager
+  name: argo-cd
   namespace: argo-cd
 spec:
   destination:
-    namespace: cert-manager
+    namespace: argo-cd
     server: https://kubernetes.default.svc
   project: default
   source:
-    chart: cert-manager
+    chart: argo-cd
     helm:
       parameters:
-        - name: crds.enabled
+        - name: server.ingress.enabled
           value: "true"
-    repoURL: https://charts.jetstack.io
-    targetRevision: v1.19.3
+        - name: server.ingress.host
+          value: argocd
+        - name: server.ingress.tls
+          value: "true"
+        - name: server.ingress.ingressClassName
+          value: tailscale
+    repoURL: https://argoproj.github.io/argo-helm
+    targetRevision: 9.4.10
   syncPolicy:
     automated:
       enabled: true

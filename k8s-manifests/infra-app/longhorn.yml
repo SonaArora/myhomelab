@@ -21,6 +21,9 @@ spec:
     repoURL: https://charts.longhorn.io
     targetRevision: 1.11.0
   syncPolicy:
+    automated:
+      enabled: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
