@@ -1,0 +1,111 @@
+- name: Get CentOS image checksums
+  ansible.builtin.uri:
+    url: "{{ centos_images_url }}/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2.SHA256SUM"
+    return_content: true
+    method: GET
+    timeout: 1
+  register: centos_sha256sum
+
+- name: Extract CentOS image checksum
+  ansible.builtin.set_fact:
+    centos_qcow2_checksum: "{{ centos_sha256sum.content | regex_search('(?m)^SHA256 \\(' ~ centos_qcow2_image | regex_escape ~ '\\) = ([a-fA-F0-9]{64})$', '\\1') | first }}"
+
+- name: Ensure a qcow2 checksum entry exists
+  ansible.builtin.assert:
+    that:
+      - centos_qcow2_checksum is match('^[a-fA-F0-9]{64}$')
+    fail_msg: "No valid SHA256 checksum found for {{ centos_qcow2_image }}."
+
+- name: Download qcow2 image
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ centos_images_url }}/{{ centos_qcow2_image }}"
+    dest: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
+    checksum: "sha256:{{ centos_qcow2_checksum }}"
+
+- name: Copy qcow2 image to /var/lib/libvirt/images
+  become: true
+  ansible.builtin.copy:
+    src: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
+    dest: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
+    remote_src: true
+
+- name: Create temporary directory to create cloud init iso
+  ansible.builtin.file:
+    state: directory
+    path: "/tmp/cloud-init/{{ vm_name }}"
+
+- name: Create user-data file
+  ansible.builtin.template:
+    src: files/templates/user-data.j2
+    dest: "/tmp/cloud-init/{{ vm_name }}/user-data"
+    force: true
+
+- name: Create meta-data file
+  ansible.builtin.template:
+    src: files/templates/meta-data.j2
+    dest: "/tmp/cloud-init/{{ vm_name }}/meta-data"
+    force: true
+
+- name: Create network config file
+  ansible.builtin.template:
+    src: files/templates/network-config.j2
+    dest: "/tmp/cloud-init/{{ vm_name }}/network-config"
+    force: true
+
+- name: Create cloud init iso
+  become: true
+  ansible.builtin.command:
+    argv:
+      - cloud-localds
+      - "/var/lib/libvirt/images/seed-{{ vm_name }}.iso"
+      - "/tmp/cloud-init/{{ vm_name }}/user-data"
+      - "/tmp/cloud-init/{{ vm_name }}/meta-data"
+      - "--network-config=/tmp/cloud-init/{{ vm_name }}/network-config"
+
+- name: Create vm
+  become: true
+  ansible.builtin.command:
+    argv:
+      - virt-install
+      - --name
+      - "{{ vm_name }}"
+      - --memory
+      - "{{ memory_mb | string }}"
+      - --vcpus
+      - "{{ vcpus | string }}"
+      - --disk
+      - "path=/var/lib/libvirt/images/{{ vm_name }}.qcow2"
+      - --disk
+      - "path=/var/lib/libvirt/images/seed-{{ vm_name }}.iso,device=cdrom"
+      - --network
+      - network=default,model=virtio
+      - --os-variant
+      - centos-stream10
+      - --import
+      - --noautoconsole
+
+- name: Wait for VM to boot
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: Query VM addresses
+  become: true
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - domifaddr
+      - "{{ vm_name }}"
+  register: vm_ip_raw
+  retries: 20
+  delay: 5
+  until: (vm_ip_raw.stdout | regex_findall('([0-9]+(?:\\.[0-9]+){3})/') | length) > 0
+  changed_when: false
+
+- name: Persist VM IP
+  ansible.builtin.set_fact:
+    created_vm_ips: "{{ (created_vm_ips | default({})) | combine({ vm_name: (vm_ip_raw.stdout | regex_findall('([0-9]+(?:\\.[0-9]+){3})/') | first) }) }}"
+
+- name: Show VM IP
+  ansible.builtin.debug:
+    msg: "VM {{ vm_name }} IP: {{ created_vm_ips[vm_name] }}"

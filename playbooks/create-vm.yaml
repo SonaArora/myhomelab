@@ -1,112 +1,53 @@
 - name: Create vm
   hosts: localhost
   vars_files:
-  - vars/tailscale-secrets.yaml
+    - vars/tailscale-secrets.yaml
   vars:
     memory_mb: 6144
     vcpus: 4
     centos_images_url: https://cloud.centos.org/centos/10-stream/x86_64/images
     centos_qcow2_image: CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
+    k8s_vm_names:
+      - "{{ k8s_master1_hostname }}"
+      - "{{ k8s_master2_hostname }}"
+      - "{{ k8s_master3_hostname }}"
 
   tasks:
-  - name: set facts
-    ansible.builtin.set_fact:
-      vm_name: "{{ vm_name }}"
+    - name: Check if VM already exists
+      become: true
+      ansible.builtin.command:
+        cmd: "virsh domstate {{ item }}"
+      loop: "{{ k8s_vm_names }}"
+      register: existing_vms
+      changed_when: false
+      failed_when: false
 
-  - name: Get CentOS image checksums
-    ansible.builtin.uri:
-      url: "{{ centos_images_url }}/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2.SHA256SUM"
-      return_content: true
-      method: GET
-      timeout: 1
-    register: centos_sha256sum
+    - name: Create missing VMs
+      ansible.builtin.include_tasks: tasks/create-vm-instance.yaml
+      loop: "{{ existing_vms.results }}"
+      loop_control:
+        loop_var: vm
+      vars:
+        vm_name: "{{ vm.item }}"
+      when: vm.rc != 0
 
+    - name: Get IPs for existing VMs
+      become: true
+      ansible.builtin.shell: |
+        virsh domifaddr {{ vm.item }} --source agent 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1
+      loop: "{{ existing_vms.results }}"
+      loop_control:
+        loop_var: vm
+      register: existing_vm_ip_results
+      changed_when: false
+      failed_when: false
+      when: vm.rc == 0
 
-  - name: Extract CentOS image checksum
-    ansible.builtin.set_fact:
-      centos_qcow2_checksum: "{{ centos_sha256sum.content | regex_search('(?m)^SHA256 \\(' ~ centos_qcow2_image | regex_escape ~ '\\) = ([a-fA-F0-9]{64})$', '\\1') | first }}"
-
-  - name: Ensure a qcow2 checksum entry exists
-    ansible.builtin.assert:
-      that:
-        - centos_qcow2_checksum is match('^[a-fA-F0-9]{64}$')
-      fail_msg: "No valid SHA256 checksum found for {{ centos_qcow2_image }}."
-    
-  - name: Download qcow2 image
-    become: true
-    ansible.builtin.get_url:
-      url: "{{ centos_images_url }}/{{ centos_qcow2_image }}"
-      dest: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
-      checksum: "sha256:{{ centos_qcow2_checksum }}"
-
-  - name: Copy qcow2 image to /var/lib/libvirt/images
-    become: true
-    ansible.builtin.copy:
-      src: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
-      dest: /var/lib/libvirt/images/{{ vm_name }}.qcow2
-
-  - name: Create temporary directory to create cloud init iso
-    ansible.builtin.file:
-      state: directory
-      path: /tmp/cloud-init/{{ vm_name }}    
-
-  - name: create user-data file
-    ansible.builtin.template:
-      src: files/templates/user-data.j2
-      dest: /tmp/cloud-init/{{ vm_name }}/user-data
-      force: true
-
-  - name: create meta-data file
-    ansible.builtin.template:
-      src: files/templates/meta-data.j2
-      dest: /tmp/cloud-init/{{ vm_name }}/meta-data
-      force: true
-
-  - name: create network config file
-    ansible.builtin.template:
-      src: files/templates/network-config.j2
-      dest: /tmp/cloud-init/{{ vm_name }}/network-config
-      force: true
-
-  - name: create cloud init iso
-    become: true
-    ansible.builtin.shell: |
-      cloud-localds /var/lib/libvirt/images/seed-{{ vm_name }}.iso \
-        /tmp/cloud-init/{{ vm_name }}/user-data \
-        /tmp/cloud-init/{{ vm_name }}/meta-data \
-        --network-config=/tmp/cloud-init/{{ vm_name }}/network-config
-  
-  - name: create vm
-    become: true
-    ansible.builtin.shell: |
-      virt-install \
-        --name {{ vm_name }} \
-        --memory {{ memory_mb }} \
-        --vcpus {{ vcpus }} \
-        --disk path=/var/lib/libvirt/images/{{ vm_name }}.qcow2 \
-        --disk path=/var/lib/libvirt/images/seed-{{ vm_name }}.iso,device=cdrom \
-        --network network=default,model=virtio \
-        --os-variant centos-stream10 \
-        --import \
-        --noautoconsole \
-
-  - name: Wait for VM to boot
-    ansible.builtin.pause:
-      seconds: 30
-
-  - name: Get VM IPv4 address
-    become: true
-    ansible.builtin.shell: |
-      virsh domifaddr {{ vm_name }} \
-        | awk '/ipv4/ {print $4}' \
-        | cut -d/ -f1
-    register: vm_ip
-    retries: 20
-    delay: 5
-    until: vm_ip.stdout != ""
-    ignore_errors: true
-
-  - name: Show VM IP
-    ansible.builtin.debug:
-      msg: "VM {{ vm_name }} IP: {{ vm_ip.stdout }}"
-    when: vm_ip is defined
+    - name: Add existing VM IPs into created_vm_ips
+      ansible.builtin.set_fact:
+        created_vm_ips: "{{ created_vm_ips | default({}) | combine({ item.vm.item: item.stdout_lines[1] }) }}"
+      loop: "{{ existing_vm_ip_results.results }}"
+      when:
+        - item.skipped is not defined
+        - item.stdout_lines is defined
+        - item.stdout_lines | length > 1

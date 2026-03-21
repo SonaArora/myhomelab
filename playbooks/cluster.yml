@@ -1,0 +1,2 @@
+- name: Include Kubernetes cluster
+  ansible.builtin.import_playbook: kubernetes_sigs.kubespray.cluster
