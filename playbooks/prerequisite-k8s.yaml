@@ -1,83 +1,71 @@
 # clone git repo for kubespray
 - name: Prepare and run Kubespray
   hosts: localhost
+  vars_files:
+  - vars/tailscale-secrets.yaml
   vars:
-    kubespray_dir: "{{ ansible_env.HOME }}/src/kubespray"
-    kubespray_inventory_dir: "{{ kubespray_dir }}/inventory/mycluster"
-    kubespray_venv: "{{ kubespray_dir }}/.venv"
     network_plugin: "cilium"
+    kubespray_nodes:
+      - name: "{{ k8s_master1_hostname }}"
+        ansible_host: "{{ created_vm_ips.get(k8s_master1_hostname, k8s_master1_ip ) }}"
+        etcd_member_name: etcd1
+      - name: "{{ k8s_master2_hostname }}"
+        ansible_host: "{{ created_vm_ips.get(k8s_master2_hostname, k8s_master2_ip ) }}"
+        etcd_member_name: etcd2
+      - name: "{{ k8s_master3_hostname }}"
+        ansible_host: "{{ created_vm_ips.get(k8s_master3_hostname, k8s_master3_ip ) }}"
+        etcd_member_name: etcd3
 
   tasks:
-  - name: Create src directory
-    ansible.builtin.file:
-      state: directory
-      path: "{{ ansible_env.HOME }}/src"
 
-  - name: Clone kubespray repo
-    ansible.builtin.git:
-      repo: https://github.com/kubernetes-sigs/kubespray.git
-      dest: "{{ kubespray_dir }}"
-
-  - name: Create k8s inventory directory
-    ansible.builtin.file:
-      state: directory
-      path: "{{ kubespray_inventory_dir }}"
-      mode: '0755'
-
-  - name: Copy inventory sample to mycluster
-    ansible.builtin.copy:
-      src: "{{ kubespray_dir }}/inventory/sample/"
-      dest: "{{ kubespray_inventory_dir }}/"
-      mode: '0755'
-      remote_src: true
-
-  - name: Create inventory file
-    ansible.builtin.template:
-      src: files/templates/inventory.ini.j2
-      dest: "{{ kubespray_inventory_dir }}/inventory.ini"
-      mode: '0644'
-
-  - name: Create network plugin configuration file
-    ansible.builtin.template:
-      src: files/templates/k8s-cluster.j2
-      dest: "{{ kubespray_inventory_dir }}/group_vars/k8s-cluster.yml"
-      mode: '0644'
-
-
-  - name: Ensure kubespray venv exists and requirements are installed
-    ansible.builtin.pip:
-      requirements: "{{ kubespray_dir }}/requirements.txt"
-      virtualenv: "{{ kubespray_venv }}"
-      virtualenv_command: "python3 -m venv"
-      state: present
+  - name: Install collections from requirements file
+    community.general.ansible_galaxy_install:
+      type: collection
+      requirements_file: requirements.yml
 
   - name: Check vm status
     become: true
-    ansible.builtin.command: "virsh domstate {{ item }}"
-    loop:
-      - "{{ k8s_master1_hostname }}"
-      - "{{ k8s_master2_hostname }}"
-      - "{{ k8s_master3_hostname }}"
+    ansible.builtin.command:
+      cmd: "virsh domstate {{ item.name }}"
+    loop: "{{ kubespray_nodes }}"
     register: vm_status
-    changed_when: false
+    failed_when: "'running' not in vm_status.stdout"
 
-  - name: Fail if any of the VMs are not running
-    ansible.builtin.fail:
-      msg: "One or more VMs are not running. Please start all VMs before proceeding."
-    when: >
-      (
-        vm_status.results
-        | selectattr('stdout', 'match', '^running\\s*$')
-        | list
-        | length
-      ) != 3
+  
+  # - name: Fail if any VM exists
+  #   ansible.builtin.fail:
+  #     msg: "One or more VMs already exist. Please delete them before running this playbook."
+  #   when: existing_vms.results | selectattr('rc', 'eq', 0) | list | length > 0
 
-  - name: Wait for ssh to be available on all hosts
-    ansible.builtin.wait_for:
-      host: "{{ item }}"
-      port: 22
+  - name: Add runtime inventory for Kubespray
+    ansible.builtin.add_host:
+      name: "{{ item.name }}"
+      groups:
+        - kube_control_plane
+        - etcd
+        - kube_node
+        - k8s_cluster
+      ansible_host: "{{ item.ansible_host }}"
+      ansible_user: cloud-user
+      ansible_become: true
+      kube_owner: root
+      ip: "{{ item.ansible_host }}"
+      access_ip: "{{ item.ansible_host }}"
+      etcd_member_name: "{{ item.etcd_member_name }}"
+      kube_network_plugin: "{{ network_plugin }}"
+    loop: "{{ kubespray_nodes }}"
+
+  - name: Show runtime inventory hostvars
+    ansible.builtin.debug:
+      msg: "{{ item }} => {{ hostvars[item] }}"
+    loop: "{{ groups['k8s_cluster'] | default([]) }}"
+
+- name: Validate runtime inventory for Kubespray
+  hosts: k8s_cluster
+  gather_facts: false
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  tasks:
+  - name: Wait for SSH connectivity
+    ansible.builtin.wait_for_connection:
       timeout: 300
-    loop:
-      - "{{ k8s_master1_ip }}"
-      - "{{ k8s_master2_ip }}"
-      - "{{ k8s_master3_ip }}"

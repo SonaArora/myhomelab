@@ -1,9 +1,0 @@
-[kube_control_plane]
-{{ k8s_master1_hostname }} ansible_host={{ k8s_master1_ip }}  ip={{ k8s_master1_ip }} #etcd_member_name=etcd1
-{{ k8s_master2_hostname }} ansible_host={{ k8s_master2_ip }}  ip={{ k8s_master2_ip }} #etcd_member_name=etcd2   
-{{ k8s_master3_hostname }} ansible_host={{ k8s_master3_ip }}  ip={{ k8s_master3_ip }} #etcd_member_name=etcd3
-
-[etcd:children]
-kube_control_plane
-
-[kube_node]

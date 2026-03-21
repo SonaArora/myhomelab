@@ -1,0 +1,13 @@
+- name: install infra app using app-of-apps pattern
+  hosts: localhost
+  gather_facts: false
+  vars:
+    manifest_dir:  "{{ playbook_dir }}/../k8s-manifests"
+    local_kubeconfig: "{{ lookup('env', 'HOME') }}/artifacts/.kube/config"
+  tasks:
+
+  - name: Apply root application manifest to bootstrap app-of-apps
+    kubernetes.core.k8s:
+      kubeconfig: "{{ local_kubeconfig }}"
+      state: present
+      src: "{{ manifest_dir }}/root-app.yml"
