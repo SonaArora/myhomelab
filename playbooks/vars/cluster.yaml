@@ -1,0 +1,22 @@
+k8s_vm_names:
+  - "{{ k8s_master1_hostname }}"
+  - "{{ k8s_master2_hostname }}"
+  - "{{ k8s_master3_hostname }}"
+
+network_plugin: "cilium"
+
+kubespray_nodes:
+  - name: "{{ k8s_master1_hostname }}"
+    ansible_host: "{{ created_vm_ips.get(k8s_master1_hostname, k8s_master1_ip ) }}"
+    etcd_member_name: etcd1
+  - name: "{{ k8s_master2_hostname }}"
+    ansible_host: "{{ created_vm_ips.get(k8s_master2_hostname, k8s_master2_ip ) }}"
+    etcd_member_name: etcd2
+  - name: "{{ k8s_master3_hostname }}"
+    ansible_host: "{{ created_vm_ips.get(k8s_master3_hostname, k8s_master3_ip ) }}"
+    etcd_member_name: etcd3
+
+local_kube_dir: "{{ lookup('env', 'HOME') }}/artifacts/.kube"
+local_kubeconfig: "{{ local_kube_dir }}/config"
+
+manifest_dir:  "{{ playbook_dir }}/../k8s-manifests"

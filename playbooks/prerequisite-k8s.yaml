@@ -3,18 +3,8 @@
   hosts: localhost
   vars_files:
   - vars/tailscale-secrets.yaml
-  vars:
-    network_plugin: "cilium"
-    kubespray_nodes:
-      - name: "{{ k8s_master1_hostname }}"
-        ansible_host: "{{ created_vm_ips.get(k8s_master1_hostname, k8s_master1_ip ) }}"
-        etcd_member_name: etcd1
-      - name: "{{ k8s_master2_hostname }}"
-        ansible_host: "{{ created_vm_ips.get(k8s_master2_hostname, k8s_master2_ip ) }}"
-        etcd_member_name: etcd2
-      - name: "{{ k8s_master3_hostname }}"
-        ansible_host: "{{ created_vm_ips.get(k8s_master3_hostname, k8s_master3_ip ) }}"
-        etcd_member_name: etcd3
+  - vars/cluster.yaml
+  
 
   tasks:
 
@@ -69,3 +59,59 @@
   - name: Wait for SSH connectivity
     ansible.builtin.wait_for_connection:
       timeout: 300
+
+
+- name: wait for 120 second to wait for cloud-init to complete on all nodes
+  hosts: k8s_cluster
+  gather_facts: false
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  tasks:
+    - name: Wait for 120 seconds
+      ansible.builtin.pause:
+        seconds: 120
+
+- name: Install Tailscale on VMs if not already installed
+  hosts: k8s_cluster
+  gather_facts: false
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  tasks:
+    - name: Check if Tailscale is already installed
+      become: true
+      ansible.builtin.command:
+        cmd: tailscale version
+      register: tailscale_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download Tailscale install script
+      become: true
+      ansible.builtin.get_url:
+        url: https://tailscale.com/install.sh
+        dest: /tmp/tailscale-install.sh
+        mode: "0755"
+      when: tailscale_check.rc != 0
+
+    - name: Install Tailscale
+      become: true
+      ansible.builtin.command:
+        cmd: /tmp/tailscale-install.sh
+      args:
+        creates: /usr/bin/tailscale
+      when: tailscale_check.rc != 0
+
+    - name: Check Tailscale status
+      become: true
+      ansible.builtin.command:
+        cmd: tailscale status --json
+      register: tailscale_status
+      changed_when: false
+      failed_when: false
+      when: tailscale_check.rc != 0
+
+    - name: Bring Tailscale up
+      become: true
+      ansible.builtin.command:
+        cmd: tailscale up --auth-key={{ tailscale_auth_key }}
+      when: tailscale_check.rc != 0

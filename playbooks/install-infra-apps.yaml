@@ -1,13 +1,18 @@
 - name: install infra app using app-of-apps pattern
   hosts: localhost
   gather_facts: false
-  vars:
-    manifest_dir:  "{{ playbook_dir }}/../k8s-manifests"
-    local_kubeconfig: "{{ lookup('env', 'HOME') }}/artifacts/.kube/config"
+  vars_files:
+  - vars/tailscale-secrets.yaml
+  - vars/cluster.yaml
+  environment:
+    KUBECONFIG: "{{ local_kubeconfig }}"
   tasks:
 
+
+  - name: kubectl wait for argocd server to be ready
+    ansible.builtin.command:
+      cmd: "kubectl wait --namespace argo-cd --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --timeout=300s"
+
   - name: Apply root application manifest to bootstrap app-of-apps
-    kubernetes.core.k8s:
-      kubeconfig: "{{ local_kubeconfig }}"
-      state: present
-      src: "{{ manifest_dir }}/root-app.yml"
+    ansible.builtin.command:
+      cmd: "kubectl apply -f {{ manifest_dir }}/root-app.yml"
