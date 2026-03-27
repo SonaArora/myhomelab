@@ -4,9 +4,12 @@
 - name: Configure kubeconfig file on localhost
   hosts: localhost
   gather_facts: false
-  vars:
-    local_kube_dir: "{{ lookup('env', 'HOME') }}/artifacts/.kube"
-    local_kubeconfig: "{{ local_kube_dir }}/config"
+  vars_files:
+  - vars/tailscale-secrets.yaml
+  - vars/cluster.yaml
+  environment:
+    KUBECONFIG: "{{ local_kubeconfig }}"
+
   tasks:
 
   - name: Create artifacts directory exists on localhost
@@ -26,16 +29,6 @@
   - name: Test kubectl access
     ansible.builtin.command:
       cmd: "kubectl get nodes"
-    environment:
-      KUBECONFIG: "{{ local_kubeconfig }}"
-
-- name: Install tailscale operator using helm and argo-cd in k8s cluster
-  hosts: localhost
-  gather_facts: false
-  vars_files:
-  - vars/tailscale-secrets.yaml
-
-  tasks:
 
   - name: Add argo-cd repo
     kubernetes.core.helm_repository:
