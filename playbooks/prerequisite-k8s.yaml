@@ -4,6 +4,7 @@
   vars_files:
   - vars/tailscale-secrets.yaml
   - vars/cluster.yaml
+  gather_facts: true
   
 
   tasks:
