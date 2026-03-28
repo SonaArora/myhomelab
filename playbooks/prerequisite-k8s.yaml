@@ -11,7 +11,7 @@
   - name: Install collections from requirements file
     community.general.ansible_galaxy_install:
       type: collection
-      requirements_file: requirements.yml
+      requirements_file: "{{ playbook_dir }}"/requirements.yml
 
   - name: Check vm status
     become: true
