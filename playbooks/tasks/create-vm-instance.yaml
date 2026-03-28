@@ -30,6 +30,13 @@
     dest: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
     remote_src: true
 
+- name: Expand qcow2 image to 30G
+  become: true
+  ansible.builtin.command:
+    cmd: "qemu-img resize /var/lib/libvirt/images/{{ vm_name }}.qcow2 30G"
+  register: qemu_resize_result
+  changed_when: qemu_resize_result.rc == 0
+
 - name: Create temporary directory to create cloud init iso
   ansible.builtin.file:
     state: directory
