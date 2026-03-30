@@ -26,6 +26,20 @@
     delegate_to: "{{ groups['kube_control_plane'][0] }}"
     become: true
 
+
+  - name: Print kubeconfig path
+    ansible.builtin.debug:
+      msg: "Kubeconfig file is available at {{ local_kubeconfig }}"
+
+  - name: Show kubeconfig current context
+    ansible.builtin.command:
+      argv:
+        - kubectl
+        - --kubeconfig
+        - "{{ local_kubeconfig }}"
+        - config
+        - current-context
+
   - name: Test kubectl access
     ansible.builtin.command:
       cmd: "kubectl get nodes"
