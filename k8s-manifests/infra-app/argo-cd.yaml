@@ -21,7 +21,7 @@ spec:
         - name: server.ingress.ingressClassName
           value: tailscale
     repoURL: https://argoproj.github.io/argo-helm
-    targetRevision: 9.4.10
+    targetRevision: 9.4.17
   syncPolicy:
     automated:
       enabled: true
