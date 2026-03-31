@@ -1,0 +1,43 @@
+- name: Delete vms
+  become: true
+  hosts: localhost
+  vars:
+    k8s_vm_names: []
+
+  tasks:
+    - name: Fail if no vm is provided
+      ansible.builtin.fail:
+        msg: "No VM names provided. Please provide vm names to delete using --extra-vars 'k8s_vm_names=[vm1, vm2]'"
+      when: k8s_vm_names | length == 0    
+
+    - name: Destroy vm
+      ansible.builtin.command:
+        cmd: "virsh destroy {{ item }}"
+      loop: "{{ k8s_vm_names }}"
+      register: destroy_result
+      changed_when: destroy_result.rc == 0
+      failed_when:
+        - destroy_result.rc != 0
+        - "'domain is not running' not in destroy_result.stderr"
+
+    - name: Undefine vm
+      ansible.builtin.command:
+        cmd: "virsh undefine {{ item }}"
+      loop: "{{ k8s_vm_names }}"
+      register: undefine_result
+      changed_when: undefine_result.rc == 0
+      failed_when:
+        - undefine_result.rc != 0
+        - "'domain is not running' not in undefine_result.stderr"
+
+    - name: Remove vm disk image
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images/{{ item }}.qcow2"
+        state: absent
+      loop: "{{ k8s_vm_names }}"
+
+    - name: Remove cloud init iso
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images/seed-{{ item }}.iso"
+        state: absent
+      loop: "{{ k8s_vm_names }}"

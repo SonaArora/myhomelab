@@ -56,7 +56,6 @@
 - name: Validate runtime inventory for Kubespray
   hosts: k8s_cluster
   gather_facts: false
-  become: false
   vars:
     ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
   tasks:
