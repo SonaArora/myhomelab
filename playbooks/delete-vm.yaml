@@ -8,7 +8,7 @@
     - name: Fail if no vm is provided
       ansible.builtin.fail:
         msg: "No VM names provided. Please provide vm names to delete using --extra-vars 'k8s_vm_names=[vm1, vm2]'"
-      when: k8s_vm_names | length == 0    
+      when: k8s_vm_names | length == 0
 
     - name: Destroy vm
       ansible.builtin.command:
