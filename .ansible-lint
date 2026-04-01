@@ -1,0 +1,28 @@
+---
+profile: basic    # available: min, basic, moderate, safety, shared, production
+
+exclude_paths:
+  - tmp/
+  - playbooks/requirements.yml
+  - playbooks/files/templates/   # Jinja2 templates - not playbooks
+
+# Rules to skip (avoid duplication with yamllint)
+skip_list:
+  - yaml[truthy]        # yamllint already covers this
+  - yaml[line-length]   # yamllint already covers this
+  - name[template]      # allow Jinja2 expressions in task names
+
+# Rules to warn on (don't fail, but flag)
+warn_list:
+  - experimental
+  - no-changed-when     # shell/command tasks without changed_when - common in homelab
+
+# Tell ansible-lint which files are which kind
+kinds:
+  - playbook: "playbooks/*.yaml"
+  - playbook: "playbooks/*.yml"
+  - playbook: "playbooks/site.yaml"
+  - tasks: "playbooks/tasks/*.yaml"
+  - tasks: "playbooks/tasks/*.yml"
+  - vars: "playbooks/vars/*.yaml"
+  - vars: "playbooks/vars/*.yml"
