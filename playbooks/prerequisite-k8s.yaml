@@ -5,7 +5,7 @@
   - vars/tailscale-secrets.yaml
   - vars/cluster.yaml
   gather_facts: true
-  
+
 
   tasks:
 
@@ -21,12 +21,6 @@
     loop: "{{ kubespray_nodes }}"
     register: vm_status
     failed_when: "'running' not in vm_status.stdout"
-
-  
-  # - name: Fail if any VM exists
-  #   ansible.builtin.fail:
-  #     msg: "One or more VMs already exist. Please delete them before running this playbook."
-  #   when: existing_vms.results | selectattr('rc', 'eq', 0) | list | length > 0
 
   - name: Add runtime inventory for Kubespray
     ansible.builtin.add_host:

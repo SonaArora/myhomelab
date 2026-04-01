@@ -70,7 +70,7 @@
 
 # Install argo-cd and enable ingress and use tailscale ingressclass
 
-  - name: Install argo-cd 
+  - name: Install argo-cd
     kubernetes.core.helm:
       name: argo-cd
       chart_ref: argo-cd/argo-cd

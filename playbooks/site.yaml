@@ -1,5 +1,5 @@
 - import_playbook: create-vm.yaml
-  tags: 
+  tags:
   - create-vm
 
 - import_playbook: prerequisite-k8s.yaml
