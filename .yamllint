@@ -1,22 +1,28 @@
+---
 extends: default
 
-ignore: |
-  .ansible/
-  .git/
-  tmp/
-
 rules:
-  comments-indentation: disable
-  document-start: disable
-  empty-lines:
-    max: 1
-    max-end: 1
-    max-start: 0
-  indentation:
-    indent-sequences: consistent
   line-length:
     max: 160
-    allow-non-breakable-words: true
-    allow-non-breakable-inline-mappings: true
+    level: warning
+
   truthy:
-    check-keys: false
+    allowed-values: ["true", "false", "yes", "no"]
+    check-keys: true
+
+  comments:
+    min-spaces-from-content: 1
+
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+
+ignore: |
+  .git/
+  .tox/
+  node_modules/
+  charts/*/charts/
