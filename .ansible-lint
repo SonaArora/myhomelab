@@ -5,6 +5,7 @@ exclude_paths:
   - tmp/
   - playbooks/requirements.yml
   - playbooks/files/templates/   # Jinja2 templates - not playbooks
+  - playbooks/vars/tailscale-secrets.yaml
 
 # Rules to skip (avoid duplication with yamllint)
 skip_list:
