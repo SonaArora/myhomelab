@@ -1,88 +1,84 @@
-
 # Install tailscale operator and argo-cd using helm
 
 - name: Configure kubeconfig file on localhost
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars/tailscale-secrets.yaml
-  - vars/cluster.yaml
+    - vars/tailscale-secrets.yaml
+    - vars/cluster.yaml
   environment:
     KUBECONFIG: "{{ local_kubeconfig }}"
 
   tasks:
 
-  - name: Create artifacts directory exists on localhost
-    ansible.builtin.file:
-      path: "{{ local_kube_dir }}"
-      mode: '0700'
-      state: directory
+    - name: Create artifacts directory exists on localhost
+      ansible.builtin.file:
+        path: "{{ local_kube_dir }}"
+        mode: '0700'
+        state: directory
 
-  - name: Copy kubeconfig file from control-plane node to localhost
-    ansible.builtin.fetch:
-      src: /etc/kubernetes/admin.conf
-      dest: "{{ local_kubeconfig }}"
-      flat: true
-    delegate_to: "{{ groups['kube_control_plane'][0] }}"
-    become: true
+    - name: Copy kubeconfig file from control-plane node to localhost
+      ansible.builtin.fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ local_kubeconfig }}"
+        flat: true
+      delegate_to: "{{ groups['kube_control_plane'][0] }}"
+      become: true
 
+    - name: Print kubeconfig path
+      ansible.builtin.debug:
+        msg: "Kubeconfig file is available at {{ local_kubeconfig }}"
 
-  - name: Print kubeconfig path
-    ansible.builtin.debug:
-      msg: "Kubeconfig file is available at {{ local_kubeconfig }}"
+    - name: Show kubeconfig current context
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ local_kubeconfig }}"
+          - config
+          - current-context
 
-  - name: Show kubeconfig current context
-    ansible.builtin.command:
-      argv:
-        - kubectl
-        - --kubeconfig
-        - "{{ local_kubeconfig }}"
-        - config
-        - current-context
+    - name: Test kubectl access
+      ansible.builtin.command:
+        cmd: "kubectl get nodes"
 
-  - name: Test kubectl access
-    ansible.builtin.command:
-      cmd: "kubectl get nodes"
+    - name: Add argo-cd repo
+      kubernetes.core.helm_repository:
+        name: argo-cd
+        repo_url: https://argoproj.github.io/argo-helm
 
-  - name: Add argo-cd repo
-    kubernetes.core.helm_repository:
-      name: argo-cd
-      repo_url: https://argoproj.github.io/argo-helm
+    - name: Add tailscale repo
+      kubernetes.core.helm_repository:
+        name: tailscale
+        repo_url: https://pkgs.tailscale.com/helmcharts
 
-  - name: Add tailscale repo
-    kubernetes.core.helm_repository:
-      name: tailscale
-      repo_url: https://pkgs.tailscale.com/helmcharts
+    - name: Install tailscale operator for ingress, cert management and ip-management
+      kubernetes.core.helm:
+        name: tailscale-operator
+        chart_ref: tailscale/tailscale-operator
+        release_namespace: tailscale
+        create_namespace: true
+        update_repo_cache: true
+        set_values:
+          - value: "oauth.clientId={{ tailscale_oauth_client_id }}"
+            value_type: string
+          - value: "oauth.clientSecret={{ tailscale_oauth_client_secret }}"
+            value_type: string
 
-  - name: Install tailscale operator for ingress, cert management and ip-management
-    kubernetes.core.helm:
-      name: tailscale-operator
-      chart_ref: tailscale/tailscale-operator
-      release_namespace: tailscale
-      create_namespace: true
-      update_repo_cache: true
-      set_values:
-      - value: "oauth.clientId={{ tailscale_oauth_client_id }}"
-        value_type: string
-      - value: "oauth.clientSecret={{ tailscale_oauth_client_secret }}"
-        value_type: string
-
-
-# Install argo-cd and enable ingress and use tailscale ingressclass
-
-  - name: Install argo-cd
-    kubernetes.core.helm:
-      name: argo-cd
-      chart_ref: argo-cd/argo-cd
-      release_namespace: argo-cd
-      create_namespace: true
-      chart_version: 9.4.10
-      update_repo_cache: true
-      force: true
-      values:
-        server:
-          ingress:
-            enabled: true
-            ingressClassName: "tailscale"
-            hostname: "argocd"
-            tls: true
+    # Install argo-cd and enable ingress and use tailscale ingressclass
+    - name: Install argo-cd
+      kubernetes.core.helm:
+        name: argo-cd
+        chart_ref: argo-cd/argo-cd
+        release_namespace: argo-cd
+        create_namespace: true
+        chart_version: 9.4.10
+        update_repo_cache: true
+        force: true
+        values:
+          server:
+            ingress:
+              enabled: true
+              ingressClassName: "tailscale"
+              hostname: "argocd"
+              tls: true

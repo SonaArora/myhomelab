@@ -13,3 +13,9 @@ __pycache__/
 .venv/
 venv/
 
+#Sensitive info
+vault-pass
+
+.markdownlint.yaml
+.pre-commit-config.yaml
+

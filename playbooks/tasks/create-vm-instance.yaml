@@ -22,6 +22,7 @@
     url: "{{ centos_images_url }}/{{ centos_qcow2_image }}"
     dest: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
     checksum: "sha256:{{ centos_qcow2_checksum }}"
+    mode: '0644'
 
 - name: Copy qcow2 image to /var/lib/libvirt/images
   become: true
@@ -29,6 +30,7 @@
     src: "/var/lib/libvirt/images/{{ centos_qcow2_image }}"
     dest: "/var/lib/libvirt/images/{{ vm_name }}.qcow2"
     remote_src: true
+    mode: '0644'
 
 - name: Expand qcow2 image to 30G
   become: true
@@ -41,24 +43,28 @@
   ansible.builtin.file:
     state: directory
     path: "/tmp/cloud-init/{{ vm_name }}"
+    mode: '0755'
 
 - name: Create user-data file
   ansible.builtin.template:
     src: files/templates/user-data.j2
     dest: "/tmp/cloud-init/{{ vm_name }}/user-data"
     force: true
+    mode: '0644'
 
 - name: Create meta-data file
   ansible.builtin.template:
     src: files/templates/meta-data.j2
     dest: "/tmp/cloud-init/{{ vm_name }}/meta-data"
     force: true
+    mode: '0644'
 
 - name: Create network config file
   ansible.builtin.template:
     src: files/templates/network-config.j2
     dest: "/tmp/cloud-init/{{ vm_name }}/network-config"
     force: true
+    mode: '0644'
 
 - name: Create cloud init iso
   become: true
@@ -69,6 +75,7 @@
       - "/tmp/cloud-init/{{ vm_name }}/user-data"
       - "/tmp/cloud-init/{{ vm_name }}/meta-data"
       - "--network-config=/tmp/cloud-init/{{ vm_name }}/network-config"
+  changed_when: true
 
 - name: Create vm
   become: true
@@ -91,6 +98,7 @@
       - centos-stream10
       - --import
       - --noautoconsole
+  changed_when: true
 
 - name: Wait for VM to boot
   ansible.builtin.pause:
@@ -111,7 +119,7 @@
 
 - name: Persist VM IP
   ansible.builtin.set_fact:
-    created_vm_ips: "{{ (created_vm_ips | default({})) | combine({ vm_name: (vm_ip_raw.stdout | regex_findall('([0-9]+(?:\\.[0-9]+){3})/') | first) }) }}"
+    created_vm_ips: "{{ (created_vm_ips | default({})) | combine({vm_name: (vm_ip_raw.stdout | regex_findall('([0-9]+(?:\\.[0-9]+){3})/') | first)}) }}"
 
 - name: Show VM IP
   ansible.builtin.debug:

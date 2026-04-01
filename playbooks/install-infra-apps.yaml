@@ -2,17 +2,16 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars/tailscale-secrets.yaml
-  - vars/cluster.yaml
+    - vars/tailscale-secrets.yaml
+    - vars/cluster.yaml
   environment:
     KUBECONFIG: "{{ local_kubeconfig }}"
   tasks:
 
+    - name: kubectl wait for argocd server to be ready
+      ansible.builtin.command:
+        cmd: "kubectl wait --namespace argo-cd --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --timeout=300s"
 
-  - name: kubectl wait for argocd server to be ready
-    ansible.builtin.command:
-      cmd: "kubectl wait --namespace argo-cd --for=condition=ready pod -l app.kubernetes.io/name=argocd-server --timeout=300s"
-
-  - name: Apply root application manifest to bootstrap app-of-apps
-    ansible.builtin.command:
-      cmd: "kubectl apply -f {{ manifest_dir }}/root-app.yml"
+    - name: Apply root application manifest to bootstrap app-of-apps
+      ansible.builtin.command:
+        cmd: "kubectl apply -f {{ manifest_dir }}/root-app.yml"
