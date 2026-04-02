@@ -7,6 +7,12 @@ exclude_paths:
   - playbooks/files/templates/   # Jinja2 templates - not playbooks
   - playbooks/vars/tailscale-secrets.yaml
 
+# Mock modules not installed in the lint environment (collections require network install)
+mock_modules:
+  - kubernetes.core.helm
+  - kubernetes.core.helm_repository
+  - community.general.ansible_galaxy_install
+
 # Rules to skip (avoid duplication with yamllint)
 skip_list:
   - yaml[truthy]        # yamllint already covers this
