@@ -36,11 +36,13 @@ ansible-lint:
   script:
     - tox -e ansible-lint
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "**/*.yml"
         - "**/*.yaml"
         - roles/**/*
         - playbooks/**/*
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 # ──────────────────────────────────────────────
 # YAML Lint
@@ -50,6 +52,9 @@ yaml-lint:
   script:
     - tox -e yaml-lint
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "**/*.yml"
         - "**/*.yaml"
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
