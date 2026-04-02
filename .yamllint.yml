@@ -5,6 +5,7 @@ rules:
   line-length:
     max: 160
     level: warning
+    allow-non-breakable-inline-mappings: true
 
   truthy:
     allowed-values: ["true", "false", "yes", "no"]
@@ -26,3 +27,4 @@ ignore: |
   .tox/
   node_modules/
   charts/*/charts/
+  playbooks/vars/tailscale-secrets.yaml

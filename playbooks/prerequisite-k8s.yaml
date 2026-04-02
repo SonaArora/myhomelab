@@ -1,3 +1,4 @@
+---
 # clone git repo for kubespray
 - name: Prepare and run Kubespray
   hosts: localhost

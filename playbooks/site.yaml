@@ -1,3 +1,4 @@
+---
 - import_playbook: create-vm.yaml
   tags:
     - create-vm

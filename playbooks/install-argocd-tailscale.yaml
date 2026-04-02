@@ -1,3 +1,4 @@
+---
 # Install tailscale operator and argo-cd using helm
 
 - name: Configure kubeconfig file on localhost

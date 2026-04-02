@@ -1,3 +1,4 @@
+---
 - name: Create vm
   hosts: localhost
   vars_files:

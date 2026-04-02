@@ -1,3 +1,4 @@
+---
 - name: Delete vms
   become: true
   hosts: localhost

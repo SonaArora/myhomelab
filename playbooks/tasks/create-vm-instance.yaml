@@ -1,3 +1,4 @@
+---
 - name: Get CentOS image checksums
   ansible.builtin.uri:
     url: "{{ centos_images_url }}/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2.SHA256SUM"
@@ -8,7 +9,7 @@
 
 - name: Extract CentOS image checksum
   ansible.builtin.set_fact:
-    centos_qcow2_checksum: "{{ centos_sha256sum.content | regex_search('(?m)^SHA256 \\(' ~ centos_qcow2_image | regex_escape ~ '\\) = ([a-fA-F0-9]{64})$', '\\1') | first }}"
+    centos_qcow2_checksum: "{{ centos_sha256sum.content | regex_search('(?m)^SHA256 \\(' ~ centos_qcow2_image | regex_escape ~ '\\) = ([a-fA-F0-9]{64})$', '\\1') | first }}"  # yamllint disable-line rule:line-length
 
 - name: Ensure a qcow2 checksum entry exists
   ansible.builtin.assert:
