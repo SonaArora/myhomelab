@@ -25,16 +25,14 @@ variables:
 secret_detection:
   stage: secret-detection
 
-default:
-  image: python:3.12-slim
-  before_script:
-    - pip install --quiet tox
-
 # ──────────────────────────────────────────────
 # Ansible Lint
 # ──────────────────────────────────────────────
 ansible-lint:
   stage: lint
+  image: python:3.12-slim
+  before_script:
+    - pip install --quiet tox
   script:
     - tox -e ansible-lint
   rules:
@@ -50,6 +48,9 @@ ansible-lint:
 # ──────────────────────────────────────────────
 yaml-lint:
   stage: lint
+  image: python:3.12-slim
+  before_script:
+    - pip install --quiet tox
   script:
     - tox -e yaml-lint
   rules:
