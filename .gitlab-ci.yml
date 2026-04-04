@@ -10,6 +10,7 @@ stages:
   - test
   - secret-detection
   - lint
+  - k8s-test
 
 sast:
   stage: test
@@ -58,3 +59,91 @@ yaml-lint:
         - "**/*.yml"
         - "**/*.yaml"
     - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ──────────────────────────────────────────────
+# K8s App-of-Apps Test (KIND + Terraform)
+# ──────────────────────────────────────────────
+k8s-app-of-apps-test:
+  stage: k8s-test
+  image:
+    name: hashicorp/terraform:1.10
+    entrypoint: [""]
+  services:
+    - name: docker:27-dind
+      alias: docker
+      variables:
+        DOCKER_TLS_CERTDIR: /certs
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: /certs
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: /certs/client
+    CLUSTER_NAME: ci-$CI_PIPELINE_ID
+    TF_DIR: $CI_PROJECT_DIR/terraform/kind
+  before_script:
+    - apk add --no-cache curl bash docker-cli
+    - curl -Lo /usr/local/bin/kind
+      https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
+    - chmod +x /usr/local/bin/kind
+    - curl -Lo /usr/local/bin/kubectl
+      https://dl.k8s.io/release/v1.31.4/bin/linux/amd64/kubectl
+    - chmod +x /usr/local/bin/kubectl
+    - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  script:
+    # --- 1. Create KIND cluster via Terraform ---
+    - cd "$TF_DIR"
+    - terraform init
+    - terraform apply -auto-approve -var="cluster_name=${CLUSTER_NAME}"
+    - export KUBECONFIG=$(terraform output -raw kubeconfig_path)
+    - kubectl cluster-info
+    # --- 2. Install ArgoCD ---
+    - kubectl create namespace argo-cd
+    - helm repo add argo-cd https://argoproj.github.io/argo-helm
+    - helm repo update
+    - >
+      helm install argo-cd argo-cd/argo-cd
+      --namespace argo-cd
+      --wait --timeout 5m
+    # --- 3. Apply root app (targetRevision: HEAD = current commit) ---
+    - kubectl apply -f "$CI_PROJECT_DIR/k8s-manifests/root-app.yml"
+    # --- 4. Wait for root-app to sync (creates child Application objects) ---
+    - |
+      echo "Waiting for root-app to sync..."
+      timeout 120 sh -c '
+        until kubectl get application root-app -n argo-cd \
+          -o jsonpath="{.status.sync.status}" 2>/dev/null \
+          | grep -q "Synced"; do
+          echo "  status: $(kubectl get application root-app -n argo-cd \
+            -o jsonpath="{.status.sync.status}" 2>/dev/null || echo pending)"
+          sleep 5
+        done
+      '
+    # --- 5. Verify all child Application objects were created ---
+    - |
+      echo "Checking child applications..."
+      EXPECTED="argo-cd cert-manager cnpg longhorn metric-server monitoring-stack"
+      MISSING=0
+      for app in $EXPECTED; do
+        if kubectl get application "$app" -n argo-cd > /dev/null 2>&1; then
+          echo "  OK: $app"
+        else
+          echo "  MISSING: $app"
+          MISSING=$((MISSING + 1))
+        fi
+      done
+      kubectl get applications -n argo-cd
+      if [ "$MISSING" -gt 0 ]; then
+        echo "FAIL: $MISSING application(s) not created by root-app"
+        exit 1
+      fi
+      echo "All expected applications exist."
+  after_script:
+    - cd "$CI_PROJECT_DIR/terraform/kind"
+    - terraform destroy -auto-approve -var="cluster_name=${CLUSTER_NAME}" || true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - k8s-manifests/**/*
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - k8s-manifests/**/*
