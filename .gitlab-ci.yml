@@ -38,13 +38,12 @@ ansible-lint:
   script:
     - tox -e ansible-lint
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_BRANCH == "main"'
       changes:
         - "**/*.yml"
         - "**/*.yaml"
         - roles/**/*
         - playbooks/**/*
-    - if: '$CI_COMMIT_BRANCH == "main"'
 
 # ──────────────────────────────────────────────
 # YAML Lint
@@ -54,12 +53,10 @@ yaml-lint:
   script:
     - tox -e yaml-lint
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_BRANCH == "main"'
       changes:
         - "**/*.yml"
         - "**/*.yaml"
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
 # ──────────────────────────────────────────────
 # K8s App-of-Apps Test (KIND + Terraform)
 # ──────────────────────────────────────────────

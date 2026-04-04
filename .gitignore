@@ -19,3 +19,10 @@ vault-pass
 .markdownlint.yaml
 .pre-commit-config.yaml
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform.lock.hcl
+
