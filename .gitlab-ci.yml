@@ -138,9 +138,6 @@ k8s-app-of-apps-test:
     - cd "$CI_PROJECT_DIR/terraform/kind"
     - terraform destroy -auto-approve -var="cluster_name=${CLUSTER_NAME}" || true
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - k8s-manifests/**/*
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_BRANCH == "main"'
       changes:
         - k8s-manifests/**/*
