@@ -79,7 +79,7 @@ k8s-app-of-apps-test:
     CLUSTER_NAME: ci-$CI_PIPELINE_ID
     TF_DIR: $CI_PROJECT_DIR/terraform/kind
   before_script:
-    - apk add --no-cache curl bash docker-cli
+    - apk add --no-cache curl bash docker-cli openssl
     - curl -Lo /usr/local/bin/kind
       https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
     - chmod +x /usr/local/bin/kind
