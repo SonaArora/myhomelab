@@ -10,6 +10,16 @@ resource "kind_cluster" "ci" {
       api_server_address = "0.0.0.0"
     }
 
+    kubeadm_config_patches = [
+      <<-EOT
+      apiVersion: kubeadm.k8s.io/v1beta3
+      kind: ClusterConfiguration
+      apiServer:
+        certSANs:
+        - docker
+      EOT
+    ]
+
     node {
       role = "control-plane"
     }
