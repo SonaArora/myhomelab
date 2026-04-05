@@ -94,6 +94,7 @@ k8s-app-of-apps-test:
     - terraform apply -auto-approve -var="cluster_name=${CLUSTER_NAME}"
     - export KUBECONFIG=$(terraform output -raw kubeconfig_path)
     - sed -i "s/0.0.0.0/docker/g" "$KUBECONFIG"
+    - kubectl config set-cluster "kind-${CLUSTER_NAME}" --insecure-skip-tls-verify=true
     - kubectl cluster-info
     # --- 2. Install ArgoCD ---
     - kubectl create namespace argo-cd
