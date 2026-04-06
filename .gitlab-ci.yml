@@ -100,6 +100,8 @@ k8s-app-of-apps-test:
     - sed -i "s/0.0.0.0/docker/g" "$KUBECONFIG"
     - kubectl config set-cluster "kind-${CLUSTER_NAME}" --insecure-skip-tls-verify=true
     - kubectl cluster-info
+    # --- 1b. Install open-iscsi on KIND node (required for CNPG) ---
+    - docker exec "${CLUSTER_NAME}-control-plane" bash -c "apt-get update && apt-get install -y open-iscsi && systemctl enable iscsid"
     # --- 2. Install & login to ArgoCD ---
     - kubectl create namespace argo-cd
     - helm repo add argo-cd https://argoproj.github.io/argo-helm
