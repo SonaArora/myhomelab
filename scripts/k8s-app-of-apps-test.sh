@@ -9,7 +9,7 @@ APP_STATUS_LOG="${ARTIFACTS_DIR}/app-status.log"
 # ──────────────────────────────────────────────
 
 argo_login() {
-  echo "Logging into ArgoCD..."
+  log "Logging into ArgoCD..."
   kubectl config set-context --current --namespace=argo-cd
   argocd login --core
 }
@@ -19,8 +19,25 @@ init_artifacts() {
   touch "$APP_STATUS_LOG"
 }
 
-log() {
-  echo "$*" | tee -a "$APP_STATUS_LOG"
+_RED='\033[0;31m'
+_YELLOW='\033[0;33m'
+_GREEN='\033[0;32m'
+_CYAN='\033[0;36m'
+_NC='\033[0m'
+
+_ts() { date '+%Y-%m-%d %H:%M:%S'; }
+log()  { printf "${_CYAN}[INFO]${_NC}  [%s] %s\n"  "$(_ts)" "$*" | tee -a "$APP_STATUS_LOG"; }
+warn() { printf "${_YELLOW}[WARN]${_NC}  [%s] %s\n" "$(_ts)" "$*" | tee -a "$APP_STATUS_LOG"; }
+error(){ printf "${_RED}[ERROR]${_NC} [%s] %s\n" "$(_ts)" "$*" | tee -a "$APP_STATUS_LOG"; }
+ok()   { printf "${_GREEN}[OK]${_NC}    [%s] %s\n"  "$(_ts)" "$*" | tee -a "$APP_STATUS_LOG"; }
+
+# Wrapper for argocd commands (not login): logs the command with timestamp, tees output to a logfile.
+# Usage: argocd_run <logfile> <argocd args...>
+argocd_run() {
+  local logfile="$1"; shift
+  log "Running: argocd $*"
+  argocd "$@" 2>&1 | tee -a "$logfile"
+  return "${PIPESTATUS[0]}"
 }
 
 capture_app_detail() {
@@ -29,7 +46,7 @@ capture_app_detail() {
   {
     argo_login
     echo "=== argocd app get $app ==="
-    argocd app get "$app" 2>&1 || true
+    argocd_run "$app_log" app get "$app" || true
     echo ""
     echo "=== kubectl describe application $app ==="
     kubectl describe application "$app" -n argo-cd 2>&1 || true
@@ -43,7 +60,7 @@ capture_app_detail() {
 # ──────────────────────────────────────────────
 
 create_cluster() {
-  echo "Creating kind cluster: ${CLUSTER_NAME}"
+  log "Creating kind cluster: ${CLUSTER_NAME}"
   cd "$TF_DIR"
   terraform init
   terraform apply -auto-approve -var="cluster_name=${CLUSTER_NAME}"
@@ -55,13 +72,13 @@ create_cluster() {
 }
 
 install_iscsi() {
-  echo "Installing iSCSI initiator in kind control-plane for Longhorn..."
+  log "Installing iSCSI initiator in kind control-plane for Longhorn..."
   docker exec "${CLUSTER_NAME}-control-plane" bash -c \
     "apt-get update && apt-get install -y open-iscsi && systemctl enable iscsid"
 }
 
 install_argocd() {
-  echo "Installing ArgoCD in the cluster..."
+  log "Installing ArgoCD in the cluster..."
   kubectl create namespace argo-cd
   helm repo add argo-cd https://argoproj.github.io/argo-helm
   helm repo update
@@ -72,21 +89,21 @@ install_argocd() {
 }
 
 apply_root_app() {
-  echo "Applying root ArgoCD application..."
+  log "Applying root ArgoCD application..."
   kubectl apply -f "$CI_PROJECT_DIR/k8s-manifests/root-app.yml"
 }
 
 disable_ingress() {
-  echo "Disabling ingress in CI environment..."
+  log "Disabling ingress in CI environment..."
   argo_login
   local ci_values_dir="$CI_PROJECT_DIR/k8s-manifests/infra-app/ci-values"
-  argocd app set argo-cd --values-literal-file "$ci_values_dir/argo-cd.yaml"
-  argocd app set monitoring-stack --values-literal-file "$ci_values_dir/monitoring-stack.yaml"
-  argocd app set longhorn --values-literal-file "$ci_values_dir/longhorn.yaml"
+  argocd_run "$APP_STATUS_LOG" app set argo-cd --values-literal-file "$ci_values_dir/argo-cd.yaml"
+  argocd_run "$APP_STATUS_LOG" app set monitoring-stack --values-literal-file "$ci_values_dir/monitoring-stack.yaml"
+  argocd_run "$APP_STATUS_LOG" app set longhorn --values-literal-file "$ci_values_dir/longhorn.yaml"
 }
 
 wait_for_root_app() {
-  echo "Waiting for root-app to sync..."
+  log "Waiting for root-app to sync..."
   timeout 20 sh -c '
     until kubectl get application root-app -n argo-cd \
       -o jsonpath="{.status.sync.status}" 2>/dev/null \
@@ -96,6 +113,8 @@ wait_for_root_app() {
       sleep 5
     done
   '
+  log "Waiting 60s for child apps to start syncing..."
+  sleep 60
 }
 
 verify_child_apps() {
@@ -105,9 +124,9 @@ verify_child_apps() {
 
   argo_login
 
-  echo "Verifying child applications..."
+  log "Verifying child applications..."
   log "=== ArgoCD App List ==="
-  argocd app list 2>&1 | tee -a "$APP_STATUS_LOG"
+  argocd_run "$APP_STATUS_LOG" app list
   log ""
 
   log "=== Checking child applications ==="
@@ -117,18 +136,24 @@ verify_child_apps() {
     HEALTH=$(kubectl get application "$app" -o jsonpath="{.status.health.status}" 2>/dev/null || echo "Unknown")
 
     if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
-      log "  OK: $app — Sync=$SYNC Health=$HEALTH"
+      ok "$app — Sync=$SYNC Health=$HEALTH"
     else
-      log "  WARN: $app — Sync=$SYNC Health=$HEALTH. Triggering argocd sync..."
-      argocd app sync "$app" >> "$APP_STATUS_LOG" 2>&1 || true
+      local app_log="${ARTIFACTS_DIR}/sync-${app}.log"
+      warn "$app — Sync=$SYNC Health=$HEALTH. Triggering argocd sync..."
+      argocd_run "$app_log" app wait "$app" --operation --timeout 120 || true
+      if ! argocd_run "$app_log" app sync "$app"; then
+        warn "$app — sync failed, terminating operation and retrying..."
+        argocd_run "$app_log" app terminate-op "$app" || true
+        argocd_run "$app_log" app sync "$app" || true
+      fi
 
       SYNC=$(kubectl get application "$app" -o jsonpath="{.status.sync.status}" 2>/dev/null || echo "Unknown")
       HEALTH=$(kubectl get application "$app" -o jsonpath="{.status.health.status}" 2>/dev/null || echo "Unknown")
 
       if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
-        log "  OK: $app — Synced and Healthy after sync"
+        ok "$app — Synced and Healthy after sync"
       else
-        log "  FAIL: $app — Sync=$SYNC Health=$HEALTH after sync"
+        error "$app — Sync=$SYNC Health=$HEALTH after sync"
         capture_app_detail "$app"
         UNHEALTHY=$((UNHEALTHY + 1))
         UNHEALTHY_APPS="$UNHEALTHY_APPS $app"
@@ -138,18 +163,18 @@ verify_child_apps() {
 
   log ""
   log "=== Final ArgoCD App List ==="
-  argocd app list 2>&1 | tee -a "$APP_STATUS_LOG"
+  argocd_run "$APP_STATUS_LOG" app list
 
   if [ "$UNHEALTHY" -gt 0 ]; then
-    echo "FAIL: $UNHEALTHY application(s) not Synced and Healthy:$UNHEALTHY_APPS"
-    echo "See artifacts: app-status.log and sync-failures.log"
+    error "FAIL: $UNHEALTHY application(s) not Synced and Healthy:$UNHEALTHY_APPS"
+    error "See artifacts: app-status.log and sync-failures.log"
     exit 1
   fi
-  echo "All expected applications Synced and Healthy."
+  ok "All expected applications Synced and Healthy."
 }
 
 destroy_cluster() {
-  echo "Destroying kind cluster: ${CLUSTER_NAME}"
+  log "Destroying kind cluster: ${CLUSTER_NAME}"
   cd "$TF_DIR"
   terraform destroy -auto-approve -var="cluster_name=${CLUSTER_NAME}" || true
 }
