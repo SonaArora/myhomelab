@@ -12,13 +12,16 @@ spec:
   source:
     chart: kube-prometheus-stack
     helm:
-      parameters:
-        - name: alertmanager.ingress.enabled
-          value: "true"
-        - name: grafana.ingress.enabled
-          value: "true"
-        - name: prometheus.ingress.enabled
-          value: "true"
+      values: |-
+        alertmanager:
+          ingress:
+            enabled: true
+        grafana:
+          ingress:
+            enabled: true
+        prometheus:
+          ingress:
+            enabled: true
     repoURL: https://prometheus-community.github.io/helm-charts
     targetRevision: 82.18.0
   syncPolicy:

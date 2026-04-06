@@ -12,11 +12,11 @@ spec:
   source:
     chart: cloudnative-pg
     helm:
-      parameters:
-        - name: webhook.startupProbe.failureThreshold
-          value: "60"
-        - name: webhook.startupProbe.periodSeconds
-          value: "50"
+      values: |-
+        webhook:
+          startupProbe:
+            failureThreshold: 60
+            periodSeconds: 50
     repoURL: https://cloudnative-pg.io/charts/
     targetRevision: 0.27.1
   syncPolicy:

@@ -12,13 +12,11 @@ spec:
   source:
     chart: longhorn
     helm:
-      parameters:
-        - name: ingress.enabled
-          value: "true"
-        - name: ingress.host
-          value: longhorn
-        - name: ingress.tls
-          value: "true"
+      values: |-
+        ingress:
+          enabled: true
+          host: longhorn
+          tls: true
     repoURL: https://charts.longhorn.io
     targetRevision: 1.11.1
   syncPolicy:

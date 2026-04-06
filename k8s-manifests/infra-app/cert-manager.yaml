@@ -12,9 +12,9 @@ spec:
   source:
     chart: cert-manager
     helm:
-      parameters:
-        - name: crds.enabled
-          value: "true"
+      values: |-
+        crds:
+          enabled: true
     repoURL: https://charts.jetstack.io
     targetRevision: v1.20.1
   syncPolicy:
