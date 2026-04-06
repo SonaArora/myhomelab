@@ -79,89 +79,16 @@ k8s-app-of-apps-test:
     CLUSTER_NAME: ci-$CI_PIPELINE_ID
     TF_DIR: $CI_PROJECT_DIR/terraform/kind
   before_script:
-    - apk add --no-cache curl bash docker-cli openssl
-    - curl -Lo /usr/local/bin/kind
-      https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
-    - chmod +x /usr/local/bin/kind
-    - curl -Lo /usr/local/bin/kubectl
-      https://dl.k8s.io/release/v1.31.4/bin/linux/amd64/kubectl
-    - chmod +x /usr/local/bin/kubectl
-    - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    - curl -sSL -o argocd-linux-amd64
-      https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-    - install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
-    - rm argocd-linux-amd64
+    - bash "$CI_PROJECT_DIR/scripts/k8s-app-of-apps-install-deps.sh"
   script:
-    # --- 1. Create KIND cluster via Terraform ---
-    - cd "$TF_DIR"
-    - terraform init
-    - terraform apply -auto-approve -var="cluster_name=${CLUSTER_NAME}"
-    - export KUBECONFIG=$(terraform output -raw kubeconfig_path)
-    - sed -i "s/0.0.0.0/docker/g" "$KUBECONFIG"
-    - kubectl config set-cluster "kind-${CLUSTER_NAME}" --insecure-skip-tls-verify=true
-    - kubectl cluster-info
-    # --- 1b. Install open-iscsi on KIND node (required for CNPG) ---
-    - docker exec "${CLUSTER_NAME}-control-plane" bash -c "apt-get update && apt-get install -y open-iscsi && systemctl enable iscsid"
-    # --- 2. Install & login to ArgoCD ---
-    - kubectl create namespace argo-cd
-    - helm repo add argo-cd https://argoproj.github.io/argo-helm
-    - helm repo update
-    - >
-      helm install argo-cd argo-cd/argo-cd
-      --namespace argo-cd
-      --wait --timeout 5m
-    - argocd login --core
-    # --- 3. Apply root app (targetRevision: HEAD = current commit) ---
-    - kubectl apply -f "$CI_PROJECT_DIR/k8s-manifests/root-app.yml"
-    # --- 4. Wait for root-app to sync (creates child Application objects) ---
-    - |
-      echo "Waiting for root-app to sync..."
-      timeout 120 sh -c '
-        until kubectl get application root-app -n argo-cd \
-          -o jsonpath="{.status.sync.status}" 2>/dev/null \
-          | grep -q "Synced"; do
-          echo "  status: $(kubectl get application root-app -n argo-cd \
-            -o jsonpath="{.status.sync.status}" 2>/dev/null || echo pending)"
-          sleep 5
-        done
-      '
-    # --- 5. Verify all child Application are in Synced and Healthy state ---
-    - |
-      echo "Checking child applications..."
-      EXPECTED="argo-cd cert-manager cnpg metric-server monitoring-stack"
-      UNHEALTHY=0
-      UNHEALTHY_APPS=""
-      kubectl config set-context --current --namespace=argo-cd
-      for app in $EXPECTED; do
-        SYNC=$(kubectl get application "$app" -o jsonpath="{.status.sync.status}")
-        HEALTH=$(kubectl get application "$app" -o jsonpath="{.status.health.status}")
-        if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
-          echo "$app is Synced and Healthy"
-        else
-          echo "$app is not Synced and Healthy. Trying argocd app sync."
-          argocd app sync "$app"
-          echo "Waiting 5 minutes for $app to become Synced and Healthy..."
-          sleep 300
-          SYNC=$(kubectl get application "$app" -o jsonpath="{.status.sync.status}")
-          HEALTH=$(kubectl get application "$app" -o jsonpath="{.status.health.status}")
-          if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
-            echo "$app is Synced and Healthy after sync"
-          else
-            echo "FAIL: $app is still not Synced/Healthy after sync. Sync=$SYNC Health=$HEALTH"
-            UNHEALTHY=$((UNHEALTHY + 1))
-            UNHEALTHY_APPS="$UNHEALTHY_APPS $app"
-          fi
-        fi
-      done
-      kubectl get applications
-      if [ $UNHEALTHY -gt 0 ]; then
-        echo "FAIL: $UNHEALTHY application(s) not Synced and Healthy:$UNHEALTHY_APPS"
-        exit 1
-      fi
-      echo "All expected applications Synced and Healthy."
+    - bash "$CI_PROJECT_DIR/scripts/k8s-app-of-apps-test.sh"
   after_script:
-    - cd "$CI_PROJECT_DIR/terraform/kind"
-    - terraform destroy -auto-approve -var="cluster_name=${CLUSTER_NAME}" || true
+    - bash "$CI_PROJECT_DIR/scripts/k8s-app-of-apps-test.sh" destroy_cluster
+  artifacts:
+    when: always
+    paths:
+      - artifacts/
+    expire_in: 7 days
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
