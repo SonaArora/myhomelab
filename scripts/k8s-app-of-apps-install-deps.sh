@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -e
 
 apk add --no-cache curl bash docker-cli openssl
 
