@@ -87,6 +87,10 @@ k8s-app-of-apps-test:
       https://dl.k8s.io/release/v1.31.4/bin/linux/amd64/kubectl
     - chmod +x /usr/local/bin/kubectl
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    - curl -sSL -o argocd-linux-amd64
+      https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+    - install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+    - rm argocd-linux-amd64
   script:
     # --- 1. Create KIND cluster via Terraform ---
     - cd "$TF_DIR"
@@ -96,7 +100,7 @@ k8s-app-of-apps-test:
     - sed -i "s/0.0.0.0/docker/g" "$KUBECONFIG"
     - kubectl config set-cluster "kind-${CLUSTER_NAME}" --insecure-skip-tls-verify=true
     - kubectl cluster-info
-    # --- 2. Install ArgoCD ---
+    # --- 2. Install & login to ArgoCD ---
     - kubectl create namespace argo-cd
     - helm repo add argo-cd https://argoproj.github.io/argo-helm
     - helm repo update
@@ -104,6 +108,7 @@ k8s-app-of-apps-test:
       helm install argo-cd argo-cd/argo-cd
       --namespace argo-cd
       --wait --timeout 5m
+    - argocd login --core
     # --- 3. Apply root app (targetRevision: HEAD = current commit) ---
     - kubectl apply -f "$CI_PROJECT_DIR/k8s-manifests/root-app.yml"
     # --- 4. Wait for root-app to sync (creates child Application objects) ---
@@ -118,25 +123,40 @@ k8s-app-of-apps-test:
           sleep 5
         done
       '
-    # --- 5. Verify all child Application objects were created ---
+    # --- 5. Verify all child Application are in Synced and Healthy state ---
     - |
       echo "Checking child applications..."
       EXPECTED="argo-cd cert-manager cnpg metric-server monitoring-stack"
-      MISSING=0
+      UNHEALTHY=0
+      UNHEALTHY_APPS=""
+      kubectl config set-context --current --namespace=argo-cd
       for app in $EXPECTED; do
-        if kubectl get application "$app" -n argo-cd > /dev/null 2>&1; then
-          echo "  OK: $app"
+        SYNC=$(kubectl get application "$app" -o jsonpath="{.status.sync.status}")
+        HEALTH=$(kubectl get application "$app" -o jsonpath="{.status.health.status}")
+        if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
+          echo "$app is Synced and Healthy"
         else
-          echo "  MISSING: $app"
-          MISSING=$((MISSING + 1))
+          echo "$app is not Synced and Healthy. Trying argocd app sync."
+          argocd app sync "$app"
+          echo "Waiting 5 minutes for $app to become Synced and Healthy..."
+          sleep 300
+          SYNC=$(kubectl get application "$app" -o jsonpath="{.status.sync.status}")
+          HEALTH=$(kubectl get application "$app" -o jsonpath="{.status.health.status}")
+          if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
+            echo "$app is Synced and Healthy after sync"
+          else
+            echo "FAIL: $app is still not Synced/Healthy after sync. Sync=$SYNC Health=$HEALTH"
+            UNHEALTHY=$((UNHEALTHY + 1))
+            UNHEALTHY_APPS="$UNHEALTHY_APPS $app"
+          fi
         fi
       done
-      kubectl get applications -n argo-cd
-      if [ "$MISSING" -gt 0 ]; then
-        echo "FAIL: $MISSING application(s) not created by root-app"
+      kubectl get applications
+      if [ $UNHEALTHY -gt 0 ]; then
+        echo "FAIL: $UNHEALTHY application(s) not Synced and Healthy:$UNHEALTHY_APPS"
         exit 1
       fi
-      echo "All expected applications exist."
+      echo "All expected applications Synced and Healthy."
   after_script:
     - cd "$CI_PROJECT_DIR/terraform/kind"
     - terraform destroy -auto-approve -var="cluster_name=${CLUSTER_NAME}" || true
