@@ -79,7 +79,7 @@ k8s-app-of-apps-test:
     CLUSTER_NAME: ci-$CI_PIPELINE_ID
     TF_DIR: $CI_PROJECT_DIR/terraform/kind
   before_script:
-    - bash "$CI_PROJECT_DIR/scripts/k8s-app-of-apps-install-deps.sh"
+    - sh "$CI_PROJECT_DIR/scripts/k8s-app-of-apps-install-deps.sh"
   script:
     - bash "$CI_PROJECT_DIR/scripts/k8s-app-of-apps-test.sh"
   after_script:
