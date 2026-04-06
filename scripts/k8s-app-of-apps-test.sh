@@ -21,6 +21,7 @@ capture_app_detail() {
   local app="$1"
   local app_log="${ARTIFACTS_DIR}/sync-failure-${app}.log"
   {
+    kubectl config set-context --current --namespace=argo-cd
     echo "=== argocd app get $app ==="
     argocd app get "$app" 2>&1 || true
     echo ""
@@ -66,6 +67,7 @@ apply_root_app() {
 }
 
 disable_ingress() {
+  kubectl config set-context --current --namespace=argo-cd
   local ci_values_dir="$CI_PROJECT_DIR/k8s-manifests/infra-app/ci-values"
   argocd app set argo-cd --values-literal-file "$ci_values_dir/argo-cd.yaml"
   argocd app set monitoring-stack --values-literal-file "$ci_values_dir/monitoring-stack.yaml"
