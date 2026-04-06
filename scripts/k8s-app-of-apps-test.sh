@@ -65,6 +65,13 @@ apply_root_app() {
   kubectl apply -f "$CI_PROJECT_DIR/k8s-manifests/root-app.yml"
 }
 
+disable_ingress() {
+  local ci_values_dir="$CI_PROJECT_DIR/k8s-manifests/infra-app/ci-values"
+  argocd app set argo-cd --values-literal-file "$ci_values_dir/argo-cd.yaml"
+  argocd app set monitoring-stack --values-literal-file "$ci_values_dir/monitoring-stack.yaml"
+  argocd app set longhorn --values-literal-file "$ci_values_dir/longhorn.yaml"
+}
+
 wait_for_root_app() {
   echo "Waiting for root-app to sync..."
   timeout 20 sh -c '
@@ -142,6 +149,7 @@ main() {
   install_iscsi
   install_argocd
   apply_root_app
+  disable_ingress
   wait_for_root_app
   verify_child_apps
 }
