@@ -8,6 +8,12 @@ APP_STATUS_LOG="${ARTIFACTS_DIR}/app-status.log"
 # Helpers
 # ──────────────────────────────────────────────
 
+argo_login() {
+  echo "Logging into ArgoCD..."
+  kubectl config set-context --current --namespace=argo-cd
+  argocd login --core
+}
+
 init_artifacts() {
   mkdir -p "$ARTIFACTS_DIR"
   touch "$APP_STATUS_LOG"
@@ -21,7 +27,7 @@ capture_app_detail() {
   local app="$1"
   local app_log="${ARTIFACTS_DIR}/sync-failure-${app}.log"
   {
-    kubectl config set-context --current --namespace=argo-cd
+    argo_login
     echo "=== argocd app get $app ==="
     argocd app get "$app" 2>&1 || true
     echo ""
@@ -37,6 +43,7 @@ capture_app_detail() {
 # ──────────────────────────────────────────────
 
 create_cluster() {
+  echo "Creating kind cluster: ${CLUSTER_NAME}"
   cd "$TF_DIR"
   terraform init
   terraform apply -auto-approve -var="cluster_name=${CLUSTER_NAME}"
@@ -48,26 +55,30 @@ create_cluster() {
 }
 
 install_iscsi() {
+  echo "Installing iSCSI initiator in kind control-plane for Longhorn..."
   docker exec "${CLUSTER_NAME}-control-plane" bash -c \
     "apt-get update && apt-get install -y open-iscsi && systemctl enable iscsid"
 }
 
 install_argocd() {
+  echo "Installing ArgoCD in the cluster..."
   kubectl create namespace argo-cd
   helm repo add argo-cd https://argoproj.github.io/argo-helm
   helm repo update
   helm install argo-cd argo-cd/argo-cd \
     --namespace argo-cd \
     --wait --timeout 5m
-  argocd login --core
+  argo_login
 }
 
 apply_root_app() {
+  echo "Applying root ArgoCD application..."
   kubectl apply -f "$CI_PROJECT_DIR/k8s-manifests/root-app.yml"
 }
 
 disable_ingress() {
-  kubectl config set-context --current --namespace=argo-cd
+  echo "Disabling ingress in CI environment..."
+  argo_login
   local ci_values_dir="$CI_PROJECT_DIR/k8s-manifests/infra-app/ci-values"
   argocd app set argo-cd --values-literal-file "$ci_values_dir/argo-cd.yaml"
   argocd app set monitoring-stack --values-literal-file "$ci_values_dir/monitoring-stack.yaml"
@@ -92,8 +103,9 @@ verify_child_apps() {
   local UNHEALTHY=0
   local UNHEALTHY_APPS=""
 
-  kubectl config set-context --current --namespace=argo-cd
+  argo_login
 
+  echo "Verifying child applications..."
   log "=== ArgoCD App List ==="
   argocd app list 2>&1 | tee -a "$APP_STATUS_LOG"
   log ""
@@ -137,6 +149,7 @@ verify_child_apps() {
 }
 
 destroy_cluster() {
+  echo "Destroying kind cluster: ${CLUSTER_NAME}"
   cd "$TF_DIR"
   terraform destroy -auto-approve -var="cluster_name=${CLUSTER_NAME}" || true
 }
@@ -151,8 +164,8 @@ main() {
   install_iscsi
   install_argocd
   apply_root_app
-  disable_ingress
   wait_for_root_app
+  disable_ingress
   verify_child_apps
 }
 
