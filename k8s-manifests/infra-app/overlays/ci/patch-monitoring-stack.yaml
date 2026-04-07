@@ -1,0 +1,19 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-stack
+  namespace: argo-cd
+spec:
+  source:
+    helm:
+      values: |-
+        alertmanager:
+          ingress:
+            enabled: false
+        grafana:
+          ingress:
+            enabled: false
+        prometheus:
+          ingress:
+            enabled: false

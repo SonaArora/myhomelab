@@ -1,0 +1,12 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: longhorn
+  namespace: argo-cd
+spec:
+  source:
+    helm:
+      values: |-
+        ingress:
+          enabled: false

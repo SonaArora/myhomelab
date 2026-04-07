@@ -90,17 +90,9 @@ install_argocd() {
 
 apply_root_app() {
   log "Applying root ArgoCD application (branch: ${CI_COMMIT_REF_NAME})..."
-  sed "s/targetRevision: HEAD/targetRevision: ${CI_COMMIT_REF_NAME}/" \
+  sed "s|targetRevision: HEAD|targetRevision: ${CI_COMMIT_REF_NAME}|;
+       s|path: k8s-manifests/infra-app/base|path: k8s-manifests/infra-app/overlays/ci|" \
     "$CI_PROJECT_DIR/k8s-manifests/root-app.yml" | kubectl apply -f -
-}
-
-disable_ingress() {
-  log "Disabling ingress in CI environment..."
-  argo_login
-  local ci_values_dir="$CI_PROJECT_DIR/k8s-manifests/infra-app/ci-values"
-  argocd_run "$APP_STATUS_LOG" app set argo-cd --values-literal-file "$ci_values_dir/argo-cd.yaml"
-  argocd_run "$APP_STATUS_LOG" app set monitoring-stack --values-literal-file "$ci_values_dir/monitoring-stack.yaml"
-  argocd_run "$APP_STATUS_LOG" app set longhorn --values-literal-file "$ci_values_dir/longhorn.yaml"
 }
 
 wait_for_root_app() {
@@ -191,7 +183,6 @@ main() {
   install_argocd
   apply_root_app
   wait_for_root_app
-  disable_ingress
   verify_child_apps
 }
 

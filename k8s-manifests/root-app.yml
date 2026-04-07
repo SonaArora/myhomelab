@@ -10,7 +10,7 @@ spec:
     namespace: argo-cd
   project: default
   source:
-    path: k8s-manifests/infra-app/
+    path: k8s-manifests/infra-app/base
     repoURL: https://gitlab.com/Sonal.work/myhomelab.git
     targetRevision: HEAD
   syncPolicy:
