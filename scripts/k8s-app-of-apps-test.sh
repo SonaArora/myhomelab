@@ -89,8 +89,9 @@ install_argocd() {
 }
 
 apply_root_app() {
-  log "Applying root ArgoCD application..."
-  kubectl apply -f "$CI_PROJECT_DIR/k8s-manifests/root-app.yml"
+  log "Applying root ArgoCD application (branch: ${CI_COMMIT_REF_NAME})..."
+  sed "s/targetRevision: HEAD/targetRevision: ${CI_COMMIT_REF_NAME}/" \
+    "$CI_PROJECT_DIR/k8s-manifests/root-app.yml" | kubectl apply -f -
 }
 
 disable_ingress() {
