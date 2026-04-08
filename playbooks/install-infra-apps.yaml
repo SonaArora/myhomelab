@@ -3,7 +3,6 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-    - vars/tailscale-secrets.yaml
     - vars/cluster.yaml
   environment:
     KUBECONFIG: "{{ local_kubeconfig }}"
