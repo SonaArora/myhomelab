@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-apk add --no-cache curl bash docker-cli openssl
+apk add --no-cache curl bash docker-cli openssl py3-bcrypt
 
 curl -Lo /usr/local/bin/kind \
   https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64

@@ -77,6 +77,23 @@ install_iscsi() {
     "apt-get update && apt-get install -y open-iscsi && systemctl enable iscsid"
 }
 
+create_kargo_secrets() {
+  log "Creating kargo namespace and admin secret for CI..."
+  kubectl create namespace kargo --dry-run=client -o yaml | kubectl apply -f -
+
+  local password_hash
+  password_hash=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'ci-test-password', bcrypt.gensalt()).decode())")
+
+  local signing_key
+  signing_key=$(openssl rand -hex 32)
+
+  kubectl create secret generic kargo-admin-secret \
+    --namespace kargo \
+    --from-literal=ADMIN_ACCOUNT_PASSWORD_HASH="$password_hash" \
+    --from-literal=ADMIN_ACCOUNT_TOKEN_SIGNING_KEY="$signing_key" \
+    --dry-run=client -o yaml | kubectl apply -f -
+}
+
 install_argocd() {
   log "Installing ArgoCD in the cluster..."
   kubectl create namespace argo-cd
@@ -111,7 +128,7 @@ wait_for_root_app() {
 }
 
 verify_child_apps() {
-  local EXPECTED="argo-cd cert-manager cnpg metric-server monitoring-stack"
+  local EXPECTED="argo-cd cert-manager cnpg metric-server monitoring-stack kargo
   local UNHEALTHY=0
   local UNHEALTHY_APPS=""
 
@@ -181,6 +198,7 @@ main() {
   create_cluster
   install_iscsi
   install_argocd
+  create_kargo_secrets
   apply_root_app
   wait_for_root_app
   verify_child_apps
