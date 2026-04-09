@@ -94,7 +94,7 @@
           metadata:
             name: kargo
 
-    - name: Create a secret for kargo admin user 
+    - name: Create a secret for kargo admin user
       kubernetes.core.k8s:
         state: present
         definition:
@@ -107,5 +107,3 @@
           stringData:
             ADMIN_ACCOUNT_PASSWORD_HASH: "{{ kargo_admin_password_hash }}"
             ADMIN_ACCOUNT_TOKEN_SIGNING_KEY: "{{ kargo_admin_token_signing_key }}"
-            
-
