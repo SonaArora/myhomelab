@@ -7,3 +7,4 @@ patches:
   - path: patch-argo-cd.yaml
   - path: patch-monitoring-stack.yaml
   - path: patch-longhorn.yaml
+  - path: patch-kargo.yaml

@@ -1,0 +1,20 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kargo
+  namespace: argo-cd
+spec:
+  source:
+    helm:
+      values: |-
+        crds:
+          install: true
+        api:
+          host: kargo
+          secret:
+            name: kargo-admin-secret
+          adminAccount:
+            enabled: true
+          ingress:
+            enabled: false
