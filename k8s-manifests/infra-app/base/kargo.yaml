@@ -1,0 +1,37 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kargo
+  namespace: argo-cd
+spec:
+  destination:
+    namespace: kargo
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: kargo
+    helm:
+      values: |-
+        crds:
+          install: true
+        api:
+          host: kargo
+          secret:
+            name: kargo-admin-secret
+          adminAccount:
+            enabled: true
+          ingress:
+            enabled: true
+            ingressClassName: tailscale
+            tls:
+              enabled: true
+    repoURL: oci://ghcr.io/akuity/kargo-charts/kargo
+    targetRevision: 1.9.5
+  syncPolicy:
+    automated:
+      enabled: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
