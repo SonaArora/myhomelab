@@ -19,6 +19,29 @@ spec:
             host: argocd
             tls: true
             ingressClassName: tailscale
+          metrics:
+            serviceMonitor:
+              enabled: true
+              additionalLabels:
+                release: monitoring-stack
+        controller:
+          metrics:
+            serviceMonitor:
+              enabled: true
+              additionalLabels:
+                release: monitoring-stack
+        repoServer:
+          metrics:
+            serviceMonitor:
+              enabled: true
+              additionalLabels:
+                release: monitoring-stack
+        applicationSet:
+          metrics:
+            serviceMonitor:
+              enabled: true
+              additionalLabels:
+                release: monitoring-stack
     repoURL: https://argoproj.github.io/argo-helm
     targetRevision: 9.4.17
   syncPolicy:
