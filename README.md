@@ -1,93 +1,286 @@
-# Myhomelab
+# myhomelab
 
+A Kubernetes homelab built with the same practices used in production: infrastructure as code, GitOps, automated testing on every change, and zero manual steps after initial setup. The goal is a fully reproducible environment anyone can clone and run - VMs, cluster, and applications included.
 
+---
+
+## Architecture
+
+```
++-----------------------------------------------------------------------+
+|  Semaphore  (Ansible UI - one-click provisioning)                     |
+|  site.yaml -> create VMs -> K8s cluster -> ArgoCD -> apps             |
++-----------------------------------------------------------------------+
+                              |
+                              | provisions
+                              v
++-----------------------------------------------------------------------+
+|  KVM Host  (Linux)                                                    |
+|                                                                       |
+|  +------------------------------------------------------------------+ |
+|  |  Kubernetes Cluster  (Kubespray + Cilium CNI)                    | |
+|  |                                                                  | |
+|  |  +-----------+    +-----------+    +-----------+                 | |
+|  |  |  node 1   |    |  node 2   |    |  node 3   |                 | |
+|  |  |  control  |    |  control  |    |  control  |                 | |
+|  |  |  + etcd   |    |  + etcd   |    |  + etcd   |                 | |
+|  |  +-----------+    +-----------+    +-----------+                 | |
+|  |                                                                  | |
+|  |  +------------------------------------------------------------+  | |
+|  |  |  ArgoCD  (App-of-Apps)                                     |  | |
+|  |  |                                                            |  | |
+|  |  |  Longhorn (storage)     Prometheus + Grafana               |  | |
+|  |  |  CNPG (PostgreSQL)      AlertManager + Kargo               |  | |
+|  |  |  Cert-Manager           Metrics Server                     |  | |
+|  |  +------------------------------------------------------------+  | |
+|  |                                                                  | |
+|  |  Tailscale Operator  (ingress + TLS + encrypted node mesh)       | |
+|  +------------------------------------------------------------------+ |
++-----------------------------------------------------------------------+
+                              |
+                        Tailscale VPN
+                              |
+                    +-----------------------+
+                    |  Access from anywhere |
+                    |  Grafana, ArgoCD,     |
+                    |  kubectl              |
+                    +-----------------------+
+```
+
+---
+
+## How it all fits together
+
+```
+  edit manifest  ->  open MR
+                         |
+                         |
+              ┌──────────────────────────────────────────┐
+              │           GitLab CI Pipeline             │
+              │                                          │
+              │  lint + security scan                    │
+              │         |                                │
+              │  spin up ephemeral KIND cluster          │
+              │         |                                │
+              │  deploy ArgoCD + root app (CI overlay)   │
+              │         |                                │
+              │  wait: all apps Synced + Healthy         │
+              │         |                                │
+              │      pass / fail                         │
+              └──────────────────────────────────────────┘
+                         |
+                    merge to main
+                         |
+              ArgoCD detects Git drift
+                         |
+              applies changes to cluster  (no kubectl apply needed)
+```
+
+This loop means you can trust every merged change works, and the production cluster always reflects what is in Git.
+
+---
+
+## Initial cluster setup (one-time)
+
+Before GitOps can take over, the cluster itself needs to exist. Ansible handles this end-to-end, driven by **Semaphore** - a self-hosted web UI for Ansible. One click in Semaphore runs the full sequence:
+
+```
+  Semaphore  ->  site.yaml
+
+  1. KVM VMs provisioned via virt-install + cloud-init
+       (CentOS Stream 10, SSH keys, Tailscale VPN auto-join)
+
+  2. Kubernetes cluster deployed via Kubespray
+       (3-node control plane + etcd, Cilium CNI)
+
+  3. Tailscale Operator + ArgoCD installed via Helm
+       (all ingress routed through Tailscale - no public LB)
+
+  4. Root ArgoCD application applied
+       (App-of-Apps bootstraps the full stack from Git)
+```
+
+After step 4, ArgoCD owns the cluster. All future changes go through Git and CI.
+
+---
+
+## Technology stack
+
+| Layer                | Technology                                               | Why                                                                 |
+|----------------------|----------------------------------------------------------|---------------------------------------------------------------------|
+| Virtualization       | KVM/QEMU, libvirt, cloud-init                            | Native Linux hypervisor, no licensing cost, full automation support |
+| Guest OS             | CentOS Stream 10                                         | RHEL-compatible, stable, well-supported by Kubespray                |
+| Kubernetes           | Kubespray + Cilium CNI                                   | Production-grade installer; Cilium for eBPF networking and policy   |
+| VPN / Networking     | Tailscale + Tailscale Operator                           | Zero-config encrypted mesh; operator handles ingress and certs      |
+| GitOps               | ArgoCD                                                   | Declarative, Git-driven reconciliation - the cluster mirrors Git    |
+| Progressive Delivery | Kargo                                                    | Automated promotion across environments on top of ArgoCD            |
+| Storage              | Longhorn                                                 | Distributed block storage built for Kubernetes, no NFS needed       |
+| Databases            | CloudNative PostgreSQL (CNPG)                            | HA Postgres with automatic failover, backup, and streaming replication |
+| Monitoring           | Prometheus + Grafana + AlertManager                      | Industry standard; pre-built dashboards for Kubernetes              |
+| TLS                  | Cert-Manager                                             | Automatic certificate lifecycle management                          |
+| Config Mgmt          | Ansible + Semaphore                                      | Ansible for automation; Semaphore for one-click UI without a terminal |
+| IaC (CI clusters)    | Terraform + KIND provider                                | Ephemeral Kubernetes clusters for CI are declared in Terraform and created/destroyed per pipeline run |
+| CI/CD                | GitLab CI                                                | Every manifest change tested on a real ephemeral cluster before merge |
+| Code Quality         | ansible-lint, yamllint, markdownlint, pre-commit         | Enforced at commit time and in CI                                   |
+
+---
+
+## GitOps application stack
+
+ArgoCD uses the [App-of-Apps pattern](https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/) - a single root application manages everything else. Add a new app by adding a file to Git; ArgoCD picks it up automatically.
+
+```
+k8s-manifests/root-app.yml
+└── infra-app/ (Kustomize)
+    ├── argo-cd.yaml          - ArgoCD itself (self-managed)
+    ├── cert-manager.yaml     - Automatic TLS certificates
+    ├── longhorn.yaml         - Distributed block storage
+    ├── monitoring-stack.yaml - Prometheus + Grafana + AlertManager
+    ├── cnpg.yaml             - CloudNative PostgreSQL operator
+    ├── kargo.yaml            - Progressive delivery
+    └── metric-server.yaml    - Pod and node resource metrics
+```
+
+Kustomize overlays handle environment differences cleanly:
+
+| Overlay          | Used for    | Difference from base                        |
+|------------------|-------------|---------------------------------------------|
+| `base/`          | Production  | Tailscale ingress enabled, full resources   |
+| `overlays/ci/`   | CI testing  | Ingress disabled, lighter resource footprint|
+
+---
+
+## CI/CD pipeline in detail
+
+Every commit triggers the GitLab CI pipeline (`.gitlab-ci.yml`):
+
+```
+commit / MR
+    │
+    ├─>  secret-detection   (no hardcoded credentials)
+    ├─>  SAST               (static security analysis)
+    ├─>  ansible-lint       (playbook best practices)
+    ├─>  yaml-lint          (formatting)
+    └─>  k8s integration test
+              │
+              ├─> Terraform creates ephemeral KIND cluster
+              ├─> ArgoCD deployed
+              ├─> Root app applied (CI overlay - no ingress)
+              ├─> Poll: all apps Synced + Healthy?
+              │       YES ─> pass, destroy cluster
+              │       NO  ─> capture logs, destroy cluster, fail MR
+              └─> Result gates the merge
+```
+
+**Terraform manages the CI cluster lifecycle.** `terraform/kind/` declares a KIND cluster as infrastructure code using the KIND Terraform provider. Each pipeline run does `terraform apply` to create a fresh cluster and `terraform destroy` to tear it down after the test, ensuring no shared state between runs. The cluster spec (node count, K8s version) is versioned alongside the rest of the project.
+
+The integration test uses `overlays/ci/` so it runs without Tailscale or external dependencies - pure Kubernetes, fully automated. Tailscale is intentionally excluded from CI: to keep CI free of external network dependencies makes it faster, stateless, and runnable on any GitLab runner without pre-provisioned VPN credentials.
+
+---
 
 ## Getting started
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### Prerequisites
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- Linux host with KVM/QEMU and libvirt
+- [Semaphore](https://semaphoreui.com/) installed (or Ansible CLI)
+- Tailscale account with an OAuth client and an auth key
+- Ansible Vault password for secrets decryption
 
-## Add your files
+### Clone and configure
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.com/Sonal.work/myhomelab.git
-git branch -M main
-git push -uf origin main
+```bash
+git clone <repo-url>
+cd myhomelab
 ```
 
-## Integrate with your tools
+Edit `playbooks/vars/cluster.yaml` with your node names and IP addresses. Populate the vault-encrypted secret files (or create your own with `ansible-vault encrypt`):
 
-* [Set up project integrations](https://gitlab.com/Sonal.work/myhomelab/-/settings/integrations)
+```
+playbooks/vars/tailscale-secrets.yaml  - Tailscale OAuth client + auth keys
+playbooks/vars/kargo.yaml              - Kargo admin credentials
+```
 
-## Collaborate with your team
+### Deploy (recommended: Semaphore)
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+1. Add this repo as a project in Semaphore
+2. Configure your vault password and SSH key in Semaphore
+3. Create a template pointing to `playbooks/site.yaml`
+4. Click **Run** - the full stack provisions itself
 
-## Test and Deploy
+### Deploy (CLI)
 
-Use the built-in continuous integration in GitLab.
+```bash
+# Full stack in one command
+ansible-playbook playbooks/site.yaml --vault-password-file vault-pass
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+# Or phase by phase
+ansible-playbook playbooks/create-vm.yaml           # VMs
+ansible-playbook playbooks/prerequisite-k8s.yaml    # Pre-flight
+ansible-playbook playbooks/cluster.yml               # Kubernetes
+ansible-playbook playbooks/install-argocd-tailscale.yaml  # ArgoCD + networking
+ansible-playbook playbooks/install-infra-apps.yaml  # Bootstrap apps
+ansible-playbook playbooks/create-kargo-secret.yaml # Kargo credentials
+```
 
-***
+### Tear down
 
-# Editing this README
+```bash
+ansible-playbook playbooks/delete-vm.yaml
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### Validate code quality
 
-## Suggestions for a good README
+```bash
+tox                      # runs ansible-lint + yamllint
+pre-commit run --all-files
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+---
 
-## Name
-Choose a self-explaining name for your project.
+## Repository layout
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+```
+myhomelab/
+├── playbooks/                      # Ansible automation
+│   ├── site.yaml                   # Master playbook - runs all phases
+│   ├── create-vm.yaml
+│   ├── prerequisite-k8s.yaml
+│   ├── cluster.yml
+│   ├── install-argocd-tailscale.yaml
+│   ├── install-infra-apps.yaml
+│   ├── create-kargo-secret.yaml
+│   ├── delete-vm.yaml
+│   ├── vars/                       # Config + vault-encrypted secrets
+│   └── files/templates/            # cloud-init Jinja2 templates
+│
+├── k8s-manifests/
+│   ├── root-app.yml                # ArgoCD root application
+│   └── infra-app/
+│       ├── base/                   # Production app definitions
+│       └── overlays/ci/            # CI overrides (no ingress)
+│
+├── monitoring/alerts/              # Custom PrometheusRules
+├── terraform/kind/                 # Terraform-managed ephemeral KIND cluster (CI only)
+│   ├── main.tf                     # KIND cluster resource
+│   ├── providers.tf                # KIND provider config
+│   ├── variables.tf                # K8s version, node count
+│   └── outputs.tf                  # kubeconfig path
+├── scripts/                        # CI test runner scripts
+├── .gitlab-ci.yml
+└── .pre-commit-config.yaml
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+---
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+## Secrets
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+All sensitive values are encrypted with Ansible Vault and safe to commit:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+| File                                     | Contains                                    |
+|------------------------------------------|---------------------------------------------|
+| `playbooks/vars/tailscale-secrets.yaml`  | Tailscale OAuth credentials and auth keys   |
+| `playbooks/vars/kargo.yaml`              | Kargo admin password hash + signing key     |
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Decrypt locally with a `vault-pass` file (git-ignored). In GitLab CI the vault password is injected as a CI variable.
+V
