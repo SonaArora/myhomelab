@@ -1,0 +1,24 @@
+# kubernetes-nodes.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alerts-kubernetes-nodes
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack   # your ruleSelector label
+spec:
+  groups:
+    - name: node.availability
+      rules:
+        - alert: KubeNodeNotReady
+          annotations:
+            description: '{{ $labels.node }} has been unready for more than 5 minutes.'
+            runbook_url: https://github.com/kubernetes-monitoring/kubernetes-mixin/tree/master/runbook.md#alert-name-kubenodenotready
+            summary: Node is not ready.
+          expr: |
+            kube_node_status_condition{job="kube-state-metrics",condition="Ready",status="true"} == 0
+            and on (cluster, node)
+            kube_node_spec_unschedulable{job="kube-state-metrics"} == 0
+          for: 5m
+          labels:
+            severity: warning
