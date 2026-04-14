@@ -1,4 +1,5 @@
 # kubernetes-nodes.yaml
+---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
