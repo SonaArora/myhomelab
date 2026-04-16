@@ -9,3 +9,4 @@ resources:
   - cnpg.yaml
   - metric-server.yaml
   - kargo.yaml
+  - sealed-secrets.yaml
