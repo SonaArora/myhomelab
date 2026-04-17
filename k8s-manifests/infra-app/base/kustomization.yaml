@@ -10,3 +10,4 @@ resources:
   - metric-server.yaml
   - kargo.yaml
   - sealed-secrets.yaml
+  - secrets.yaml

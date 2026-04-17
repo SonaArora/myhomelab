@@ -8,3 +8,4 @@ patches:
   - path: patch-monitoring-stack.yaml
   - path: patch-longhorn.yaml
   - path: patch-kargo.yaml
+  - path: patch-secrets.yaml
