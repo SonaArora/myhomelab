@@ -21,6 +21,29 @@ spec:
           ingress:
             enabled: true
             ingressClassName: tailscale
+          envFromSecret: grafana-telegram-secret
+          alerting:
+            contactpoints.yaml:
+              apiVersion: 1
+              contactPoints:
+                - orgId: 1
+                  name: Telegram
+                  receivers:
+                    - uid: telegram-uid
+                      type: telegram
+                      settings:
+                        bottoken: $TELEGRAM_BOT_TOKEN
+                        chatid: $TELEGRAM_CHAT_ID
+                      disableResolveMessage: false
+            notification_policy.yaml:
+              apiVersion: 1
+              policies:
+                - orgId: 1
+                  receiver: Telegram
+                  group_by: ["grafana_folder", "alertname"]
+                  group_wait: 30s
+                  group_interval: 5m
+                  repeat_interval: 4h
         prometheus:
           ingress:
             enabled: true
