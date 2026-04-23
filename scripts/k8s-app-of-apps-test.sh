@@ -128,7 +128,7 @@ wait_for_root_app() {
 }
 
 verify_child_apps() {
-  local EXPECTED="argo-cd cert-manager cnpg metric-server monitoring-stack kargo sealed-secrets"
+  local EXPECTED="argo-cd cert-manager cnpg metric-server monitoring-stack kargo sealed-secrets monitor-root"
   local UNHEALTHY=0
   local UNHEALTHY_APPS=""
 

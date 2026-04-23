@@ -11,3 +11,4 @@ resources:
   - kargo.yaml
   - sealed-secrets.yaml
   - secrets.yaml
+  - monitor-root.yaml
