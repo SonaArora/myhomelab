@@ -12,7 +12,7 @@ spec:
     server: https://kubernetes.default.svc
   project: default
   source:
-    path: k8s-manifests/monitoring
+    path: k8s-manifests/monitoring/alerts
     repoURL: https://gitlab.com/Sonal.work/myhomelab.git
     targetRevision: HEAD
   syncPolicy:
